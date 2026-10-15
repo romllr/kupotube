@@ -40,6 +40,6 @@ if __name__ == '__main__':
     try:
         main()
     except Exception:
-        detail = traceback.format_exc().replace('%','%25').replace('\r','%0D').replace('\n','%0A')
-        print(f'::error title=Falha na atualização empacotada::{detail}', flush=True)
+        detail = traceback.format_exc().replace('\x00', '').encode('ascii', 'backslashreplace').decode('ascii').replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+        print(f'::error title=Packaged updater failed::{detail}', flush=True)
         raise

@@ -180,7 +180,7 @@ def stage_update(manifest, progress, no_ui=False):
             with launcher_log.open('wb') as output:
                 process = subprocess.Popen(command, cwd=str(updates), stdin=subprocess.DEVNULL,
                                            stdout=output, stderr=subprocess.STDOUT,
-                                           creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+                                           creationflags=subprocess.CREATE_NO_WINDOW)
         finally:
             if reset_dll:
                 reset_dll(str(bundle_root))
@@ -188,7 +188,7 @@ def stage_update(manifest, progress, no_ui=False):
         while not (folder / 'ready').exists():
             if process.poll() is not None:
                 detail = launcher_log.read_text(encoding='utf-8', errors='replace')[-2500:]
-                raise RuntimeError('O instalador não iniciou. O app continuará aberto. ' + detail)
+                raise RuntimeError(f'O instalador não iniciou (código {process.returncode}). O app continuará aberto. ' + detail)
             if time.monotonic() >= deadline:
                 process.terminate()
                 process.wait(timeout=5)
