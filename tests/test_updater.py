@@ -115,7 +115,7 @@ def test_helper_failure_does_not_handoff(tmp_path):
     from types import SimpleNamespace
     with patch('updater.os', SimpleNamespace(name='nt',getpid=lambda:1234)), \
          patch('updater.sys.frozen',True,create=True), patch('updater.data_dir',return_value=tmp_path), \
-         patch('updater.download_update'), patch('updater.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1)), \
+         patch('updater.download_update'), patch('updater.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1,returncode=1)), \
          patch('updater.subprocess.CREATE_NO_WINDOW',0,create=True), patch('updater.subprocess.DETACHED_PROCESS',0,create=True):
         with pytest.raises(RuntimeError,match='não iniciou'):
             updater.stage_update(manifest(),lambda _:None)
