@@ -15,8 +15,11 @@ def main():
         target = root / 'KupoFixture.exe'
         shutil.copyfile(sys.argv[1], target)
         task_env = dict(os.environ, KUPOTUBE_UPDATE_SMOKE_ROOT=str(root), LOCALAPPDATA=str(root / 'profile'))
-        parent = subprocess.Popen([str(target)], env=task_env)
-        assert parent.wait(timeout=90) == 0, 'Old app could not hand off to installer'
+        parent = subprocess.Popen([str(target)], env=task_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output, _ = parent.communicate(timeout=90)
+        log = root / 'profile' / 'Kupotube' / 'updater.log'
+        log_text = log.read_text(encoding='utf-8', errors='replace')[-5000:] if log.exists() else '(no installer log)'
+        assert parent.returncode == 0, 'Old app could not hand off to installer: ' + output.decode(errors='replace')[-5000:] + log_text
         deadline = time.monotonic() + 90
         while not (root / 'restarted').exists() and time.monotonic() < deadline:
             failures = list(root.rglob('error.txt'))
