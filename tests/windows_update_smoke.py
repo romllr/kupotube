@@ -27,7 +27,7 @@ def main():
                 raise AssertionError(failures[0].read_text(errors='replace'))
             time.sleep(.2)
         assert (root / 'restarted').exists(), 'New executable did not restart while its launcher remained alive'
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 40
         while (list((root / 'profile').rglob('kupotube-update-*')) or list(root.glob('*.previous'))) and time.monotonic() < deadline:
             time.sleep(.2)
         assert not list((root / 'profile').rglob('kupotube-update-*')), 'Staging was not cleaned'

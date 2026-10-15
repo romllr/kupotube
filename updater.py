@@ -99,7 +99,11 @@ try {
     }
     Set-Content -LiteralPath (Join-Path $Folder 'ready') -Value 'ready'
     $App = Get-Process -Id $AppId -ErrorAction SilentlyContinue
-    if ($App) { Wait-Process -Id $AppId -Timeout 120 -ErrorAction Stop }
+    if ($App) {
+        try {
+            if (-not $App.WaitForExit(120000)) { throw 'O aplicativo não encerrou a tempo.' }
+        } finally { $App.Dispose(); $App = $null }
+    }
     $Installed = $false
     for ($i = 0; $i -lt 120; $i++) {
         try {
@@ -115,11 +119,11 @@ try {
     if (-not $Installed) { throw 'O Windows não liberou o executável para atualização.' }
     $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
     Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target)
-    Remove-Item -LiteralPath $Backup -Force -ErrorAction SilentlyContinue
-    # Retry cleanup in case antivirus still holds a temporary file.
-    for ($i = 0; $i -lt 10; $i++) {
+    # The old onefile bootloader may briefly hold its renamed backup open.
+    for ($i = 0; $i -lt 60; $i++) {
+        Remove-Item -LiteralPath $Backup -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $Folder -Recurse -Force -ErrorAction SilentlyContinue
-        if (-not (Test-Path -LiteralPath $Folder)) { break }
+        if (-not (Test-Path -LiteralPath $Folder) -and -not (Test-Path -LiteralPath $Backup)) { break }
         Start-Sleep -Milliseconds 500
     }
 } catch {
