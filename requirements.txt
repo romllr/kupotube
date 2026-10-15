@@ -20,5 +20,5 @@ starlette==1.8.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.54.0
-yt-dlp==2026.8.19
+yt-dlp[default,curl-cffi]==2026.8.19
 pywebview==6.0

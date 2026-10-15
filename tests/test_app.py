@@ -39,7 +39,7 @@ def test_download_and_cleanup(downloader, validate):
     assert response.status_code == 200
     assert response.content == b'sample-video'
     opts = downloader.call_args.args[0]
-    assert 'height<=720' in opts['format']
+    assert 'height<=?720' in opts['format']
     assert not Path(opts['outtmpl']).parent.exists()
 
 
@@ -76,3 +76,70 @@ def test_progress_and_webm_selection(downloader, validate):
         assert opts['postprocessors'][0]['preferedformat'] == 'webm'
     finally:
         asyncio.run(response.background())
+
+
+@patch('app.validate_url', side_effect=lambda value: value)
+@patch('app.yt_dlp.YoutubeDL')
+def test_unknown_resolution_and_single_reel_entry(downloader, validate):
+    downloader.return_value.__enter__.return_value.extract_info.return_value = {
+        '_type': 'playlist', 'entries': [{'title':'Reel', 'formats':[{'vcodec':'h264','url':'https://example.test/video'}]}]}
+    response = client.post('/api/info', json={'url':'https://www.instagram.com/reels/example/'})
+    assert response.status_code == 200
+    assert response.json()['qualities'] == []
+    assert response.json()['unknown_quality'] is True
+
+
+@patch('app.validate_url', side_effect=lambda value: value)
+@patch('app.yt_dlp.YoutubeDL')
+def test_login_error_preserves_actionable_detail(downloader, validate):
+    import yt_dlp
+    downloader.return_value.__enter__.return_value.extract_info.side_effect = yt_dlp.utils.DownloadError('Login required')
+    response = client.post('/api/info', json={'url':'https://www.instagram.com/reel/example/'})
+    assert response.status_code == 422
+    assert 'Importar sessão' in response.json()['detail']
+
+
+@patch('app.validate_url', side_effect=lambda value: value)
+@patch('app.yt_dlp.YoutubeDL')
+def test_mp3_audio_conversion(downloader, validate):
+    def extract(url, download):
+        opts = downloader.call_args.args[0]
+        Path(opts['outtmpl'].replace('%(ext)s','mp3')).write_bytes(b'mp3')
+        return {'title':'Audio'}
+    downloader.return_value.__enter__.return_value.extract_info.side_effect = extract
+    response = client.post('/api/download',json={'url':'https://youtu.be/example','container':'mp3'})
+    assert response.status_code == 200
+    opts = downloader.call_args.args[0]
+    assert opts['format'] == 'bestaudio/best'
+    assert opts['postprocessors'][0]['preferredcodec'] == 'mp3'
+    assert 'merge_output_format' not in opts
+    assert '.mp3' in response.headers['content-disposition']
+
+
+def test_tiktok_prefers_unwatermarked_formats():
+    # Evaluate the actual yt-dlp selector against marked playback/download streams.
+    import yt_dlp
+    from app import Download, prepare_download
+    captured = []
+    class FakeDownloader:
+        def __init__(self, opts): captured.append(opts)
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def extract_info(self, url, download):
+            Path(captured[-1]['outtmpl'].replace('%(ext)s','mp4')).write_bytes(b'video')
+            return {'title':'TikTok'}
+    import asyncio
+    with patch('app.validate_url',side_effect=lambda url:url), patch('app.yt_dlp.YoutubeDL',FakeDownloader):
+        response=prepare_download(Download(url='https://www.tiktok.com/@user/video/123',quality=720))
+        asyncio.run(response.background())
+    formats = [
+        {'format_id':'clean','url':'https://example.test/clean','ext':'mp4','height':480,'vcodec':'h264','acodec':'aac','format_note':'Direct video'},
+        {'format_id':'marked','url':'https://example.test/marked','ext':'mp4','height':720,'vcodec':'h264','acodec':'aac','format_note':'watermarked'},
+    ]
+    with yt_dlp.YoutubeDL({'quiet':True}) as downloader:
+        selector=downloader.build_format_selector(captured[0]['format'])
+        chosen=list(selector({'formats':formats,'has_merged_format':True,'incomplete_formats':False}))
+        assert chosen[0]['format_id'] == 'clean'
+        # Still works if only the watermarked variant is available.
+        fallback=list(selector({'formats':formats[1:],'has_merged_format':True,'incomplete_formats':False}))
+        assert fallback[0]['format_id'] == 'marked'

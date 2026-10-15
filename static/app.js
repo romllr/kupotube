@@ -7,7 +7,8 @@ let soundEnabled = localStorage.getItem('kupotube-sound') !== 'off';
 function message(text, error = false) { status.textContent = text; status.classList.toggle('error', error); }
 function setBusy(value) {
   busy = value;
-  for (const element of [analyze, download, url, quality, container]) element.disabled = value;
+  for (const element of [analyze, download, url, quality, container, $('#import-session'), $('#remove-session')]) element.disabled = value;
+  quality.disabled = value || container.value === 'mp3';
 }
 function updateSound() {
   $('#sound').setAttribute('aria-pressed', String(soundEnabled));
@@ -17,6 +18,7 @@ function updateSound() {
 $('#sound').addEventListener('click', () => {
   soundEnabled = !soundEnabled;
   localStorage.setItem('kupotube-sound', soundEnabled ? 'on' : 'off'); updateSound();
+  window.pywebview?.api?.set_sound_enabled?.(soundEnabled).catch(() => {});
 });
 updateSound();
 function prepareAudio() {
@@ -50,7 +52,7 @@ function showProgress(data) {
   const meter = $('#progress-meter');
   if (known) meter.setAttribute('aria-valuenow', String(Math.round(data.percent)));
   else meter.removeAttribute('aria-valuenow');
-  const labels = {choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: 'Juntando áudio e vídeo / ajustando formato', saving: 'Salvando arquivo', complete: 'Download concluído'};
+  const labels = {choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: container.value === 'mp3' ? 'Convertendo áudio para MP3' : 'Juntando áudio e vídeo / ajustando formato', saving: 'Salvando arquivo', complete: 'Download concluído'};
   progressLabel.textContent = data.state === 'downloading' ? `Baixando ${data.track === 'Áudio' ? 'áudio' : 'vídeo'}` : (labels[data.state] || 'Preparando');
   $('#progress-value').textContent = known ? `${data.estimated ? '≈ ' : ''}${Math.floor(data.percent)}%` : '…';
   const details = [];
@@ -83,7 +85,9 @@ form.addEventListener('submit', async event => {
       option.textContent = `${height}p${height === 2160 ? ' · 4K' : height === 1440 ? ' · QHD' : height === 1080 ? ' · Full HD' : height === 720 ? ' · HD' : ''}`;
       return option;
     }));
-    quality.value = data.qualities.find(h => h <= 1080) || data.qualities[0];
+    if (!data.qualities.length) {
+      const original = document.createElement('option'); original.value = 4320; original.textContent = 'Original · resolução não informada'; quality.append(original);
+    } else { quality.value = data.qualities.find(h => h <= 1080) || data.qualities[0]; }
     result.hidden = false; message('');
   } catch (error) { message(error.message, true); }
   finally { setBusy(false); }
@@ -108,7 +112,7 @@ download.addEventListener('click', async () => {
       if (outcome.error) throw new Error(outcome.error);
       if (outcome.cancelled) { progress.hidden = true; message('Salvamento cancelado.'); return; }
       const completed = await followDownload();
-      message('Vídeo salvo! Pronto para levar com você.');
+      message(container.value === 'mp3' ? 'Áudio salvo! Pronto para ouvir.' : 'Vídeo salvo! Pronto para levar com você.');
       notifyComplete(completed.filename || 'Seu vídeo foi salvo.');
       return;
     }
@@ -125,4 +129,69 @@ download.addEventListener('click', async () => {
     message('Arquivo enviado aos downloads do navegador.'); notifyComplete('Arquivo pronto para salvar no navegador.');
   } catch (error) { progress.hidden = true; message(error.message, true); }
   finally { setBusy(false); }
+});
+
+container.addEventListener('change', () => {
+  const audio = container.value === 'mp3';
+  $('#quality-field').hidden = audio;
+  quality.disabled = busy || audio;
+  $('#download-label').textContent = audio ? 'Baixar MP3' : 'Baixar vídeo';
+  $('#format-note').textContent = audio ? 'Somente áudio · MP3 a 192 kbps. A conversão pode levar alguns segundos.' : 'Áudio incluído. WebM depende de faixas compatíveis; MKV aceita mais codecs.';
+});
+$('#import-session').addEventListener('click', async () => {
+  if (!window.pywebview?.api) { message('Importar sessão está disponível no app Windows.'); return; }
+  try {
+    const answer = await window.pywebview.api.import_session();
+    if (answer.error) throw new Error(answer.error);
+    if (answer.imported) message('Sessão importada neste computador. Busque o vídeo novamente.');
+  } catch (error) { message(error.message, true); }
+});
+$('#remove-session').addEventListener('click', async () => {
+  if (!window.pywebview?.api) return;
+  try {
+    const answer = await window.pywebview.api.remove_session();
+    if (answer.error) throw new Error(answer.error);
+    message('Sessão removida deste computador.');
+  } catch (error) { message(error.message, true); }
+});
+let checkingUpdate = false;
+async function checkUpdate(manual = false) {
+  if (!window.pywebview?.api?.check_update) { if (manual) message('Atualizações automáticas estão disponíveis no app Windows.'); return; }
+  if (checkingUpdate) return;
+  checkingUpdate = true; $('#check-update').disabled = true;
+  try {
+    const answer = await window.pywebview.api.check_update();
+    if (answer.current) $('#app-version').textContent = 'v' + answer.current;
+    if (answer.error) throw new Error(answer.error);
+    if (answer.available) {
+      $('#update-title').textContent = `Kupotube ${answer.version} disponível`;
+      $('#update-banner').hidden = false;
+    } else if (manual) message('Seu Kupotube já está atualizado.');
+  } catch (error) { if (manual) message(error.message, true); }
+  finally { checkingUpdate = false; $('#check-update').disabled = false; }
+}
+$('#check-update').addEventListener('click', () => checkUpdate(true));
+async function desktopReady() {
+  checkUpdate();
+  if (window.pywebview?.api?.get_preferences) {
+    try { soundEnabled = (await window.pywebview.api.get_preferences()).sound !== false; updateSound(); } catch (_) {}
+  }
+}
+window.addEventListener('pywebviewready', desktopReady);
+if (window.pywebview?.api) desktopReady();
+$('#install-update').addEventListener('click', async () => {
+  if (busy || !window.pywebview?.api) return;
+  setBusy(true); $('#install-update').disabled = true;
+  try {
+    const answer = await window.pywebview.api.install_update();
+    if (answer.error) throw new Error(answer.error);
+    for (;;) {
+      const state = await window.pywebview.api.get_update_progress();
+      if (state.state === 'error') throw new Error(state.error);
+      $('#update-detail').textContent = state.state === 'restarting' ? 'Atualização verificada. Reiniciando o Kupotube…' : `Baixando atualização… ${state.percent || 0}%`;
+      if (state.state === 'restarting') return;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch (error) { message(error.message, true); }
+  finally { setBusy(false); $('#install-update').disabled = false; }
 });

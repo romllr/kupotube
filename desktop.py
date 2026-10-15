@@ -3,6 +3,10 @@ import asyncio
 import logging
 from pathlib import Path
 import os
+from fastapi import HTTPException
+from settings import cookie_path, get_preferences, set_sound
+import updater
+from version import VERSION
 import socket
 import threading
 import time
@@ -20,6 +24,7 @@ class DesktopAPI:
         self._lock = threading.Lock()
         self._state = {'state': 'idle', 'percent': None}
         self._active = False
+        self._update_status = {'state': 'idle'}
 
     def get_progress(self):
         with self._lock:
@@ -40,7 +45,7 @@ class DesktopAPI:
             name = yt_dlp.utils.sanitize_filename(title or 'video', restricted=True)[:120]
             target = self._window.create_file_dialog(
                 webview.FileDialog.SAVE, save_filename=f'{name}.{container}',
-                file_types=(f'Vídeo {container.upper()} (*.{container})',),
+                file_types=(f'{"Áudio" if container == "mp3" else "Vídeo"} {container.upper()} (*.{container})',),
             )
             if not target:
                 self._update({'state': 'cancelled', 'percent': None})
@@ -67,13 +72,109 @@ class DesktopAPI:
             self._update({'state': 'saving', 'percent': None})
             os.replace(response.path, destination)
             self._update({'state': 'complete', 'percent': 100, 'filename': destination.name})
-        except Exception:
-            self._update({'state': 'error', 'percent': None,
-                          'error': 'O download falhou. Confira o link, o espaço livre ou tente outro formato.'})
+        except Exception as exc:
+            detail = exc.detail if isinstance(exc, HTTPException) else 'O download falhou. Confira o link, o espaço livre ou tente outro formato.'
+            self._update({'state': 'error', 'percent': None, 'error': detail})
         finally:
-            if response is not None and response.background:
-                asyncio.run(response.background())
+            try:
+                if response is not None and response.background:
+                    asyncio.run(response.background())
+            finally:
+                with self._lock:
+                    self._active = False
+
+
+    def get_preferences(self):
+        return get_preferences()
+
+    def set_sound_enabled(self, enabled):
+        if type(enabled) is not bool:
+            return {'error': 'Preferência inválida.'}
+        try:
             with self._lock:
+                set_sound(enabled)
+            return {'saved': True}
+        except OSError:
+            return {'error': 'Não foi possível salvar a preferência.'}
+
+    def import_session(self):
+        with self._lock:
+            if self._active:
+                return {'error': 'Aguarde o download ou a atualização terminar.'}
+        files = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False,
+                                                file_types=('Cookies Netscape (*.txt)',))
+        if not files:
+            return {'cancelled': True}
+        try:
+            source = Path(files[0] if isinstance(files, (tuple, list)) else files)
+            if source.stat().st_size > 5 * 1024 * 1024:
+                raise ValueError('Arquivo muito grande.')
+            jar = yt_dlp.cookies.YoutubeDLCookieJar(str(source))
+            jar.load(ignore_discard=True, ignore_expires=False)
+            supported = ('instagram.com', 'tiktok.com', 'youtube.com')
+            selected = [cookie for cookie in jar if any(cookie.domain.lstrip('.') == host or cookie.domain.endswith('.' + host) for host in supported)]
+            if not selected:
+                raise ValueError('Não contém sessão de uma plataforma compatível.')
+            target = cookie_path()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_suffix('.tmp')
+            try:
+                temporary.touch(mode=0o600, exist_ok=True)
+                output = yt_dlp.cookies.YoutubeDLCookieJar(str(temporary))
+                for cookie in selected:
+                    output.set_cookie(cookie)
+                output.save(ignore_discard=True, ignore_expires=False)
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return {'imported': True}
+        except Exception:
+            return {'error': 'Não foi possível importar. Escolha um arquivo de cookies no formato Netscape (.txt) com uma sessão válida.'}
+
+    def remove_session(self):
+        with self._lock:
+            if self._active:
+                return {'error': 'Aguarde o download ou a atualização terminar.'}
+            cookie_path().unlink(missing_ok=True)
+        return {'removed': True}
+
+    def check_update(self):
+        try:
+            result = updater.check_update()
+            result.pop('manifest', None)
+            return result
+        except Exception:
+            return {'error': 'Não foi possível consultar atualizações. Verifique a conexão e se o GitHub Releases está acessível.', 'current': VERSION}
+
+    def get_update_progress(self):
+        with self._lock:
+            return dict(self._update_status)
+
+    def install_update(self):
+        with self._lock:
+            if self._active:
+                return {'error': 'Aguarde o download terminar antes de atualizar.'}
+            self._active = True
+            self._update_status = {'state': 'downloading', 'percent': 0}
+        threading.Thread(target=self._install_update, daemon=True).start()
+        return {'started': True}
+
+    def _install_update(self):
+        try:
+            result = updater.check_update()
+            if not result.get('available'):
+                raise RuntimeError('Você já tem a versão mais recente.')
+            def progress(percent):
+                with self._lock:
+                    self._update_status = {'state': 'downloading', 'percent': percent}
+            updater.stage_update(result['manifest'], progress)
+            with self._lock:
+                self._update_status = {'state': 'restarting', 'percent': 100}
+            self._window.destroy()
+        except Exception:
+            with self._lock:
+                self._update_status = {'state': 'error', 'error': 'Não foi possível instalar a atualização. A versão atual foi mantida. Tente novamente ou baixe a release pelo GitHub.'}
                 self._active = False
 
 

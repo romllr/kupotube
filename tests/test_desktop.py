@@ -60,3 +60,39 @@ def test_download_returns_while_worker_is_busy(tmp_path):
             release.set()
     # The bridge must not expose the native window, locks or thread state to JS.
     assert all(key.startswith('_') for key in vars(api))
+
+
+def test_session_import_keeps_only_supported_cookies(tmp_path):
+    from app import options, make_downloader
+    source = tmp_path / 'export.txt'
+    source.write_text('# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t2147483647\tsessionid\tfake-test-cookie\n.example.com\tTRUE\t/\tTRUE\t2147483647\tunrelated\tnot-a-real-secret\n')
+    original = source.read_bytes()
+    destination = tmp_path / 'profile'
+    api = DesktopAPI()
+    api._window = Mock()
+    api._window.create_file_dialog.return_value = (str(source),)
+    with patch('settings.data_dir', return_value=destination):
+        assert api.import_session() == {'imported': True}
+        stored = (destination / 'session-cookies.txt').read_bytes()
+        assert b'unrelated' not in stored
+        assert b'sessionid' in stored
+        with make_downloader(options()) as downloader:
+            assert len(list(downloader.cookiejar)) == 1
+        assert (destination / 'session-cookies.txt').read_bytes() == stored
+        assert api.remove_session() == {'removed': True}
+        assert not (destination / 'session-cookies.txt').exists()
+    assert source.read_bytes() == original
+
+
+def test_download_retains_platform_error(tmp_path):
+    from fastapi import HTTPException
+    api = DesktopAPI()
+    with patch('desktop.prepare_download', side_effect=HTTPException(422, 'Importar sessão')):
+        api._run(Download(url='https://www.instagram.com/reel/test/'),tmp_path / 'out.mp4')
+    assert api.get_progress()['error'] == 'Importar sessão'
+
+
+def test_sound_preferences_survive_new_api_instance(tmp_path):
+    with patch('settings.data_dir', return_value=tmp_path):
+        assert DesktopAPI().set_sound_enabled(False) == {'saved': True}
+        assert DesktopAPI().get_preferences()['sound'] is False

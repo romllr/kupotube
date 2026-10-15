@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -19,7 +19,7 @@ jobs:
       - name: Instalar dependências de compilação
         run: |
           python -m pip install -r requirements.txt
-          python -m pip install pyinstaller==6.16.0 imageio-ffmpeg==0.6.0 playwright==1.64.0 "yt-dlp[default]==2026.8.19"
+          python -m pip install pyinstaller==6.16.0 imageio-ffmpeg==0.6.0 playwright==1.64.0 "yt-dlp[default,curl-cffi]==2026.8.19"
       - name: Testar
         run: python -m pytest -q
       - name: Validar interface e progresso
@@ -82,3 +82,26 @@ jobs:
           name: Kupotube-Windows-x64
           path: dist/Kupotube.exe
           if-no-files-found: error
+
+      - name: Preparar metadados de atualização
+        shell: python
+        run: |
+          import hashlib, json
+          from pathlib import Path
+          from version import VERSION, REPOSITORY
+          binary = Path('dist/Kupotube.exe')
+          manifest = {
+              'version': VERSION,
+              'url': f'https://github.com/{REPOSITORY}/releases/download/v{VERSION}/Kupotube.exe',
+              'sha256': hashlib.file_digest(binary.open('rb'), 'sha256').hexdigest(),
+              'size': binary.stat().st_size,
+          }
+          Path('dist/update.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+      - name: Publicar versão para o atualizador
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $version = python -c "from version import VERSION; print(VERSION)"
+          gh release create "v$version" dist/Kupotube.exe dist/update.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Kupotube $version" --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível publicar a release. Para uma nova versão, incremente VERSION em version.py; não substitua uma release já publicada.' }
