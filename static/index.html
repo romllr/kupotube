@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#24273a"><title>Kupotube — seu vídeo, com você</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="/" aria-label="Kupotube início"><span class="logo">▶</span> kupotube<span class="dot">.</span></a><span class="header-note">SEU PRÓXIMO VÍDEO FAVORITO. OFFLINE.</span></header>
+  <main>
+    <div class="eyebrow"><span></span> DO LINK PARA O SEU DISPOSITIVO</div>
+    <h1>Viu. Curtiu.<br><em>Baixou.</em></h1>
+    <p class="intro">Seus vídeos favoritos, para levar com você.<br>Cole o link, escolha a qualidade e deixe com a gente.</p>
+    <section class="card" aria-label="Baixar vídeo">
+      <form id="form"><label for="url">O que vamos baixar hoje?</label><div class="input-row"><span class="link-icon" aria-hidden="true">↗</span><input id="url" name="url" type="url" placeholder="Cole o link do vídeo aqui…" required autocomplete="off" aria-describedby="hint"><button id="analyze" type="submit">Buscar vídeo <span>↗</span></button></div><p id="hint">YouTube, Shorts, TikTok, Pinterest e Instagram Reels</p></form>
+      <div id="result" hidden><div class="video-summary"><span class="video-icon">▶</span><div><span class="small">PRONTO PARA BAIXAR</span><h2 id="title"></h2><p id="meta"></p></div></div><div class="download-row"><div class="quality-field"><label for="quality">Qualidade do vídeo</label><select id="quality"></select></div><button id="download">Baixar vídeo <span>↓</span></button></div><p class="format-note">A resolução exibida é a altura do vídeo. Áudio incluído.</p></div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
+    <div class="platforms"><span>UM LINK. VÁRIAS POSSIBILIDADES.</span><div><b>▶ YouTube</b><b>♪ TikTok</b><b>Ⓟ Pinterest</b><b>◎ Instagram</b></div></div>
+    <section class="steps" aria-label="Como funciona"><article><span>01 /</span><h3>Copie o link</h3><p>Encontrou aquele vídeo?<br>Copie o link de compartilhamento.</p></article><article><span>02 /</span><h3>Do seu jeito</h3><p>Escolha entre as qualidades<br>disponíveis, até 4K e além.</p></article><article><span>03 /</span><h3>Leve com você</h3><p>Um clique para baixar.<br>Simples assim, sempre com você.</p></article></section>
+  </main>
+  <footer><span>Feito para simplificar <i>✦</i></span><p>Baixe apenas conteúdos seus ou que você tem autorização para salvar.<br>A disponibilidade depende de cada plataforma.</p><span>kupotube © 2026</span></footer>
+</body></html>

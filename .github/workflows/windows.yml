@@ -1,0 +1,66 @@
+name: Gerar Kupotube para Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependências de compilação
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller==6.16.0 imageio-ffmpeg==0.6.0 "yt-dlp[default]==2026.8.19"
+      - name: Testar
+        run: python -m pytest -q
+      - name: Preparar ferramentas incluídas
+        shell: python
+        run: |
+          from pathlib import Path
+          import shutil
+          import imageio_ffmpeg
+          Path('tools').mkdir(exist_ok=True)
+          shutil.copy2(imageio_ffmpeg.get_ffmpeg_exe(), 'tools/ffmpeg.exe')
+          shutil.copy2(shutil.which('node'), 'tools/node.exe')
+      - name: Gerar executável
+        run: python -m PyInstaller --noconfirm Kupotube.spec
+      - name: Validar inicialização do executável
+        shell: pwsh
+        run: |
+          $process = Start-Process dist/Kupotube.exe -PassThru
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 90; $attempt++) {
+              Start-Sleep -Seconds 1
+              $process.Refresh()
+              if ($process.HasExited) { throw 'O executável encerrou antes de iniciar.' }
+              $connections = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -eq $process.Id })
+              # PyInstaller onefile starts a child process that owns the server.
+              $children = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $process.Id }
+              foreach ($child in $children) {
+                $connections += @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -eq $child.ProcessId })
+              }
+              foreach ($connection in $connections) {
+                $response = Invoke-WebRequest "http://127.0.0.1:$($connection.LocalPort)/" -UseBasicParsing
+                if ($response.StatusCode -eq 200 -and $response.Content.Contains('Kupotube')) { $ready = $true; break }
+              }
+              if ($ready) { break }
+            }
+            if (-not $ready) { throw 'O executável não serviu a interface.' }
+          } finally {
+            taskkill /PID $process.Id /T /F
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kupotube-Windows-x64
+          path: dist/Kupotube.exe
+          if-no-files-found: error
