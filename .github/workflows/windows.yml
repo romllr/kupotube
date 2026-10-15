@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
       - name: Instalar dependências de compilação
@@ -77,26 +77,14 @@ jobs:
           } finally {
             taskkill /PID $process.Id /T /F
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: Kupotube-Windows-x64
           path: dist/Kupotube.exe
           if-no-files-found: error
 
       - name: Preparar metadados de atualização
-        shell: python
-        run: |
-          import hashlib, json
-          from pathlib import Path
-          from version import VERSION, REPOSITORY
-          binary = Path('dist/Kupotube.exe')
-          manifest = {
-              'version': VERSION,
-              'url': f'https://github.com/{REPOSITORY}/releases/download/v{VERSION}/Kupotube.exe',
-              'sha256': hashlib.file_digest(binary.open('rb'), 'sha256').hexdigest(),
-              'size': binary.stat().st_size,
-          }
-          Path('dist/update.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+        run: python scripts/release_manifest.py
       - name: Publicar versão para o atualizador
         env:
           GH_TOKEN: ${{ github.token }}
