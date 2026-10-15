@@ -72,11 +72,8 @@ def test_windows_installer_replace_and_rollback(tmp_path):
             source.write_bytes(b'MZinvalid executable')
         else:
             shutil.copyfile(original, source)
-        script = stage / 'install.ps1'
-        script.write_text(updater.INSTALL_SCRIPT, encoding='utf-8-sig')
-        run = subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
-                              '-File',str(script),'-AppId','2147483647','-Target',str(target),
-                              '-Source',str(source),'-Folder',str(stage),'-Checksum',hashlib.sha256(source.read_bytes()).hexdigest(),'-NoUI'], capture_output=True, timeout=45)
+        command = updater.helper_command(2147483647, target, source, stage, hashlib.sha256(source.read_bytes()).hexdigest(), no_ui=True)
+        run = subprocess.run(command, capture_output=True, timeout=45)
         assert run.returncode == (1 if broken else 0), run.stderr.decode(errors='replace')
         assert target.read_bytes() == original.read_bytes()
         if not broken:
@@ -89,10 +86,12 @@ def test_handoff_waits_for_own_pid_and_confirms_helper(tmp_path):
     appfile = tmp_path / 'Kupotube.exe'
     appfile.write_bytes(b'MZold')
     captured = []
+    folder_capture = []
     fake_process = SimpleNamespace(poll=lambda: None)
     def launch(command, **kwargs):
         captured.append(command)
-        folder = Path(command[command.index('-Folder') + 1])
+        folder = next((tmp_path / 'profile' / 'updates').glob('kupotube-update-*'))
+        folder_capture.append(folder)
         (folder / 'ready').write_text('ready')
         return fake_process
     with patch('updater.os', SimpleNamespace(name='nt',getpid=lambda:1234)), \
@@ -102,8 +101,11 @@ def test_handoff_waits_for_own_pid_and_confirms_helper(tmp_path):
          patch('updater.subprocess.CREATE_NO_WINDOW',0,create=True), patch('updater.subprocess.DETACHED_PROCESS',0,create=True):
         assert updater.stage_update(manifest(),lambda _:None) is fake_process
     command = captured[0]
-    assert command[command.index('-AppId') + 1] == '1234'
-    assert '-ParentId' not in command
+    import base64
+    script = base64.b64decode(command[-1]).decode('utf-16-le')
+    assert '-AppId 1234' in script
+    assert '-ParentId' not in script
+    assert not (folder_capture[0] / 'install.ps1').exists()
     assert appfile.read_bytes() == b'MZold'
     assert not list(tmp_path.glob('kupotube-update-*'))
 

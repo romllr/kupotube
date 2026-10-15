@@ -1,5 +1,6 @@
 """GitHub Releases updater. Only installs a verified asset from our repository."""
 import hashlib
+import base64
 import json
 import os
 from pathlib import Path
@@ -134,6 +135,20 @@ try {
 '''
 
 
+def helper_command(app_id, executable, source, folder, checksum, no_ui=False):
+    # Single-quoted PowerShell literals escape apostrophes by doubling them.
+    # Encoding avoids command-line quoting ambiguity and a locked .ps1 in staging.
+    def literal(value):
+        return "'" + str(value).replace("'", "''") + "'"
+    invocation = (f"& {{ {INSTALL_SCRIPT} }} -AppId {int(app_id)} "
+                  f"-Target {literal(executable)} -Source {literal(source)} "
+                  f"-Folder {literal(folder)} -Checksum {literal(checksum)}")
+    if no_ui:
+        invocation += ' -NoUI'
+    encoded = base64.b64encode(invocation.encode('utf-16-le')).decode('ascii')
+    return ['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded]
+
+
 def stage_update(manifest, progress, no_ui=False):
     if os.name != 'nt' or not getattr(sys, 'frozen', False):
         raise RuntimeError('Atualizações automáticas estão disponíveis no executável Windows.')
@@ -144,16 +159,7 @@ def stage_update(manifest, progress, no_ui=False):
     try:
         target = folder / 'Kupotube.exe'
         download_update(manifest, target, progress)
-        script = folder / 'install.ps1'
-        script.write_text(INSTALL_SCRIPT, encoding='utf-8-sig')
-        app_id = os.getpid()
-        command = [
-            'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-            '-File', str(script), '-AppId', str(app_id), '-Target', str(executable),
-            '-Source', str(target), '-Folder', str(folder), '-Checksum', manifest['sha256'],
-        ]
-        if no_ui:
-            command.append('-NoUI')
+        command = helper_command(os.getpid(), executable, target, folder, manifest['sha256'], no_ui)
         process = subprocess.Popen(command, cwd=str(updates), creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
         deadline = time.monotonic() + 60
         while not (folder / 'ready').exists():
