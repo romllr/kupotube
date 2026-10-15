@@ -67,7 +67,7 @@ executa esse teste com o Edge, usando eventos de download simulados.
 ## Atualizações automáticas
 
 A partir da versão 0.3.0, o app consulta a última release pública de
-`romllr/kupotube` ao abrir e pelo botão **Verificar atualizações**. Quando há uma
+`romllr/kupotube` ao abrir e pelo botão **Verificar atualizações** no cabeçalho. Enquanto o app está visível, também consulta a cada 15 minutos; ao voltar à janela, consulta novamente se passaram mais de 2 minutos desde a última verificação bem-sucedida. Uma versão nova aparece em um aviso fixo no topo. Na consulta manual sem novidades, um popup Macchiato informa a versão instalada; falhas de conexão têm popup próprio, sem afirmar que o app está atualizado. Quando há uma
 versão superior, **Atualizar e reiniciar** baixa o executável em segundo plano,
 confere tamanho, SHA-256 e o cabeçalho Windows, espera o app encerrar, mantém um
 backup durante a substituição e reinicia. Se a substituição falhar, restaura a

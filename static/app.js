@@ -154,29 +154,62 @@ $('#remove-session').addEventListener('click', async () => {
     message('Sessão removida deste computador.');
   } catch (error) { message(error.message, true); }
 });
-let checkingUpdate = false;
+let checkingUpdate = false, lastUpdateCheck = 0, updateTimer;
+function updateDialog(title, description, version = '', error = false) {
+  $('#update-dialog-title').textContent = title;
+  $('#update-dialog-description').textContent = description;
+  $('#update-dialog-version').textContent = version ? `VERSÃO ${version}` : '';
+  $('#update-dialog-version').hidden = !version;
+  $('#update-dialog-icon').src = error ? '/icons/arrows-clockwise.svg' : '/icons/check-circle.svg';
+  $('#update-dialog').classList.toggle('dialog-error', error);
+  $('#update-dialog-confirm').textContent = error ? 'Entendi' : 'Tudo certo';
+  if (!$('#update-dialog').open) $('#update-dialog').showModal();
+}
+$('#update-dialog').addEventListener('close', () => $('#check-update').focus());
+$('#update-dialog').addEventListener('click', event => {
+  if (event.target !== $('#update-dialog')) return;
+  const box = event.target.getBoundingClientRect();
+  if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) event.target.close();
+});
 async function checkUpdate(manual = false) {
-  if (!window.pywebview?.api?.check_update) { if (manual) message('Atualizações automáticas estão disponíveis no app Windows.'); return; }
+  if (!window.pywebview?.api?.check_update) { if (manual) updateDialog('Atualizações no aplicativo', 'Abra o Kupotube para Windows para verificar e instalar atualizações.', '', true); return; }
   if (checkingUpdate) return;
   checkingUpdate = true; $('#check-update').disabled = true;
+  $('#check-update').setAttribute('aria-busy', 'true');
+  $('#check-update-label').textContent = 'Verificando…';
   try {
     const answer = await window.pywebview.api.check_update();
     if (answer.current) $('#app-version').textContent = 'v' + answer.current;
     if (answer.error) throw new Error(answer.error);
+    lastUpdateCheck = Date.now();
     if (answer.available) {
       $('#update-title').textContent = `Kupotube ${answer.version} disponível`;
       $('#update-banner').hidden = false;
-    } else if (manual) message('Seu Kupotube já está atualizado.');
-  } catch (error) { if (manual) message(error.message, true); }
-  finally { checkingUpdate = false; $('#check-update').disabled = false; }
+      $('#check-update').classList.add('has-update');
+      $('#check-update').title = 'Uma nova versão está disponível';
+      if (manual) $('#update-banner').scrollIntoView({behavior:'smooth', block:'start'});
+    } else {
+      $('#update-banner').hidden = true;
+      $('#check-update').classList.remove('has-update');
+      $('#check-update').removeAttribute('title');
+      if (manual) updateDialog('O Kupo já está atualizado!', 'Você está com a versão mais recente. Tudo pronto para baixar seus próximos favoritos.', answer.current);
+    }
+  } catch (error) { if (manual) updateDialog('Não foi possível verificar', error.message, '', true); }
+  finally {
+    checkingUpdate = false; $('#check-update').disabled = false;
+    $('#check-update').setAttribute('aria-busy', 'false');
+    $('#check-update-label').textContent = 'Verificar atualizações';
+  }
 }
 $('#check-update').addEventListener('click', () => checkUpdate(true));
 async function desktopReady() {
   checkUpdate();
+  updateTimer ||= setInterval(() => { if (!busy && !document.hidden) checkUpdate(); }, 15 * 60 * 1000);
   if (window.pywebview?.api?.get_preferences) {
     try { soundEnabled = (await window.pywebview.api.get_preferences()).sound !== false; updateSound(); } catch (_) {}
   }
 }
+window.addEventListener('focus', () => { if (!busy && Date.now() - lastUpdateCheck > 2 * 60 * 1000) checkUpdate(); });
 window.addEventListener('pywebviewready', desktopReady);
 if (window.pywebview?.api) desktopReady();
 $('#install-update').addEventListener('click', async () => {

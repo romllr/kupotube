@@ -12,7 +12,11 @@ with sync_playwright() as p:
     page.route('**/api/info', lambda route: route.fulfill(json={'title':'Vídeo de teste','uploader':'Kupotube','duration':93,'qualities':[2160,1080,720]}))
     page.add_init_script('''window.pywebview = {api: {
       start_download: async (url, quality, format) => { window.polls = 0; window.lastFormat = format; return {started: true}; },
-      check_update: async () => ({available:true,current:'0.3.0',version:'99.0.0'}),
+      check_update: async () => {
+        await new Promise(resolve => setTimeout(resolve,100));
+        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.1'};
+        return {available:window.updateMode !== 'latest',current:'0.3.1',version:'99.0.0'};
+      },
       install_update: async () => ({started:true}),
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
       get_preferences: async () => ({sound:true}),
@@ -25,6 +29,9 @@ with sync_playwright() as p:
       }
     }};''')
     page.goto(os.environ.get('KUPOTUBE_TEST_URL', 'http://127.0.0.1:8010/'))
+    page.wait_for_selector('#update-banner',state='visible')
+    assert not page.locator('#update-dialog').is_visible()
+    assert page.locator('#check-update').bounding_box()['y'] < 150
     page.fill('#url','https://youtu.be/example')
     page.click('#analyze')
     page.wait_for_selector('#result',state='visible')
@@ -51,11 +58,38 @@ with sync_playwright() as p:
     page.click('#install-update')
     page.wait_for_function("document.querySelector('#status').textContent === 'Falha de atualização simulada'")
     assert page.locator('#download').is_enabled()
+    page.evaluate("window.updateMode = 'latest'")
+    page.click('#check-update')
+    page.wait_for_selector('#update-dialog[open]')
+    assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
+    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.1'
+    assert page.locator('#update-dialog-confirm').evaluate('e => e === document.activeElement')
+    assert page.locator('#update-banner').is_hidden()
+    page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None
+    page.keyboard.press('Escape')
+    assert not page.locator('#update-dialog').is_visible()
+    assert page.locator('#check-update').evaluate('e => e === document.activeElement')
+    page.evaluate('checkUpdate()')
+    page.wait_for_selector('#check-update:not([disabled])')
+    assert not page.locator('#update-dialog').is_visible()
+    page.evaluate("window.updateMode = 'error'")
+    page.click('#check-update')
+    page.wait_for_selector('#update-dialog[open]')
+    assert page.locator('#update-dialog-title').inner_text() == 'Não foi possível verificar'
+    assert 'Sem conexão' in page.locator('#update-dialog-description').inner_text()
+    page.click('#update-dialog-confirm')
+    assert not page.locator('#update-dialog').is_visible()
+    page.evaluate("window.updateMode = 'available'")
+    page.click('#check-update')
+    page.wait_for_selector('#update-banner',state='visible')
+    assert not page.locator('#update-dialog').is_visible()
+    page.evaluate('window.scrollTo(0,600)')
+    assert page.locator('#update-banner').bounding_box()['y'] >= 0
     page.click('#sound')
     assert page.locator('#sound').get_attribute('aria-pressed')=='false'
     page.set_viewport_size({'width':580,'height':750})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert page.locator('img').evaluate_all('(images) => images.every(i => i.complete && i.naturalWidth > 0)')
     assert not errors, errors
-    print('UI passed: MP3, update banner/failure recovery, green progress, custom select arrows, responsive layout, toast, sound, icons and no JS errors')
+    print('UI passed: header update button, sticky banner, latest/error modals, focus/Escape, silent automatic checks, MP3/download and notification regressions')
     browser.close()
