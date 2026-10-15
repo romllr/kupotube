@@ -119,6 +119,7 @@ try {
     }
 } catch {
     $Failure = $_.Exception.Message
+    [Console]::Error.WriteLine($Failure)
     if ($MovedOriginal -and (Test-Path -LiteralPath $Backup)) {
         Move-Item -LiteralPath $Backup -Destination $Target -Force
         $env:PYINSTALLER_RESET_ENVIRONMENT = '1'

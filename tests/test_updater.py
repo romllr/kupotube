@@ -74,7 +74,8 @@ def test_windows_installer_replace_and_rollback(tmp_path):
             shutil.copyfile(original, source)
         command = updater.helper_command(2147483647, target, source, stage, hashlib.sha256(source.read_bytes()).hexdigest(), no_ui=True)
         run = subprocess.run(command, capture_output=True, timeout=45)
-        assert run.returncode == (1 if broken else 0), run.stderr.decode(errors='replace')
+        error_log = (stage / 'error.txt').read_text(errors='replace') if (stage / 'error.txt').exists() else ''
+        assert run.returncode == (1 if broken else 0), error_log + run.stderr.decode(errors='replace')
         assert target.read_bytes() == original.read_bytes()
         if not broken:
             assert not stage.exists()
