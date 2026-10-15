@@ -1,4 +1,4 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 import os
 import shutil
 import sys
@@ -75,12 +75,13 @@ with sync_playwright() as p:
     page.wait_for_selector('#update-dialog[open]')
     assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
     assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.1'
-    assert page.locator('#update-dialog-confirm').evaluate('e => e === document.activeElement')
+    expect(page.locator('#update-dialog-confirm')).to_be_focused()
     assert page.locator('#update-banner').is_hidden()
     page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None
     page.keyboard.press('Escape')
     assert not page.locator('#update-dialog').is_visible()
-    assert page.locator('#check-update').evaluate('e => e === document.activeElement')
+    # Native dialog close events are queued; Edge may return from Escape first.
+    expect(page.locator('#check-update')).to_be_focused()
     page.evaluate('checkUpdate()')
     page.wait_for_selector('#check-update:not([disabled])')
     assert not page.locator('#update-dialog').is_visible()
