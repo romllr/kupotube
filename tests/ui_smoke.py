@@ -2,6 +2,18 @@ from playwright.sync_api import sync_playwright
 import os
 import shutil
 import sys
+import traceback
+
+
+def report_failure(kind, value, stack):
+    text = ''.join(traceback.format_exception(kind, value, stack))
+    if os.environ.get('GITHUB_ACTIONS'):
+        escaped = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print(f'::error title=Falha na interface::{escaped}', flush=True)
+    sys.__excepthook__(kind, value, stack)
+
+
+sys.excepthook = report_failure
 with sync_playwright() as p:
     executable = os.environ.get('CHROMIUM_PATH') or shutil.which('chromium')
     launch = {'executable_path': executable} if executable else ({'channel': 'msedge'} if sys.platform == 'win32' else {})
