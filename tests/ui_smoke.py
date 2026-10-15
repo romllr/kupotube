@@ -26,8 +26,8 @@ with sync_playwright() as p:
       start_download: async (url, quality, format) => { window.polls = 0; window.lastFormat = format; return {started: true}; },
       check_update: async () => {
         await new Promise(resolve => setTimeout(resolve,100));
-        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.1'};
-        return {available:window.updateMode !== 'latest',current:'0.3.1',version:'99.0.0'};
+        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.2'};
+        return {available:window.updateMode !== 'latest',current:'0.3.2',version:'99.0.0'};
       },
       install_update: async () => ({started:true}),
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
@@ -74,7 +74,7 @@ with sync_playwright() as p:
     page.click('#check-update')
     page.wait_for_selector('#update-dialog[open]')
     assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
-    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.1'
+    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.2'
     expect(page.locator('#update-dialog-confirm')).to_be_focused()
     assert page.locator('#update-banner').is_hidden()
     page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None

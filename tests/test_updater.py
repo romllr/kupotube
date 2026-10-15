@@ -75,7 +75,45 @@ def test_windows_installer_replace_and_rollback(tmp_path):
         script = stage / 'install.ps1'
         script.write_text(updater.INSTALL_SCRIPT, encoding='utf-8-sig')
         run = subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
-                              '-File',str(script),'-ParentId','2147483647','-Target',str(target),
-                              '-Source',str(source),'-Folder',str(stage)], capture_output=True, timeout=45)
+                              '-File',str(script),'-AppId','2147483647','-Target',str(target),
+                              '-Source',str(source),'-Folder',str(stage),'-Checksum',hashlib.sha256(source.read_bytes()).hexdigest(),'-NoUI'], capture_output=True, timeout=45)
         assert run.returncode == (1 if broken else 0), run.stderr.decode(errors='replace')
         assert target.read_bytes() == original.read_bytes()
+        if not broken:
+            assert not stage.exists()
+        assert not list(root.glob('.kupotube-*.tmp'))
+
+
+def test_handoff_waits_for_own_pid_and_confirms_helper(tmp_path):
+    from types import SimpleNamespace
+    appfile = tmp_path / 'Kupotube.exe'
+    appfile.write_bytes(b'MZold')
+    captured = []
+    fake_process = SimpleNamespace(poll=lambda: None)
+    def launch(command, **kwargs):
+        captured.append(command)
+        folder = Path(command[command.index('-Folder') + 1])
+        (folder / 'ready').write_text('ready')
+        return fake_process
+    with patch('updater.os', SimpleNamespace(name='nt',getpid=lambda:1234)), \
+         patch('updater.sys.frozen',True,create=True), patch('updater.sys.executable',str(appfile)), \
+         patch('updater.data_dir', return_value=tmp_path / 'profile'), \
+         patch('updater.download_update'), patch('updater.subprocess.Popen',side_effect=launch), \
+         patch('updater.subprocess.CREATE_NO_WINDOW',0,create=True), patch('updater.subprocess.DETACHED_PROCESS',0,create=True):
+        assert updater.stage_update(manifest(),lambda _:None) is fake_process
+    command = captured[0]
+    assert command[command.index('-AppId') + 1] == '1234'
+    assert '-ParentId' not in command
+    assert appfile.read_bytes() == b'MZold'
+    assert not list(tmp_path.glob('kupotube-update-*'))
+
+
+def test_helper_failure_does_not_handoff(tmp_path):
+    from types import SimpleNamespace
+    with patch('updater.os', SimpleNamespace(name='nt',getpid=lambda:1234)), \
+         patch('updater.sys.frozen',True,create=True), patch('updater.data_dir',return_value=tmp_path), \
+         patch('updater.download_update'), patch('updater.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1)), \
+         patch('updater.subprocess.CREATE_NO_WINDOW',0,create=True), patch('updater.subprocess.DETACHED_PROCESS',0,create=True):
+        with pytest.raises(RuntimeError,match='não iniciou'):
+            updater.stage_update(manifest(),lambda _:None)
+    assert not list((tmp_path / 'updates').glob('kupotube-update-*'))

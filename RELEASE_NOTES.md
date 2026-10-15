@@ -1,9 +1,9 @@
-Kupotube 0.3.1
+Kupotube 0.3.2
 
-- Aviso de nova versão destacado no topo, visível durante a rolagem.
-- Botão Verificar atualizações no cabeçalho, com indicação de consulta e de nova versão.
-- Popup no tema Macchiato quando o Kupo já está atualizado.
-- Popup de erro de conexão sem informar incorretamente que o app está atualizado.
-- Verificação ao abrir, periodicamente enquanto visível e ao retornar ao app.
+- Corrigida a espera pelo processo do atualizador: aguarda o app, não o processo pai que pode permanecer aberto.
+- O app só fecha após o instalador confirmar que iniciou e verificou a cópia da atualização.
+- Arquivos de atualização ficam em AppData, sem criar pasta ao lado do executável.
+- Limpeza com tentativas adicionais e mensagens de erro para evitar falhas silenciosas.
+- Teste Windows de atualização e reinício com um executável PyInstaller empacotado.
 
-Quem já usa a versão 0.3.0 pode instalar esta versão pelo atualizador do app.
+Como o atualizador antigo pode falhar antes de instalar esta correção, baixe esta versão manualmente se necessário.

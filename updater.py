@@ -7,6 +7,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
+from settings import data_dir
 from urllib.request import Request, urlopen
 
 from version import REPOSITORY, VERSION
@@ -75,63 +77,95 @@ def download_update(manifest, target, progress):
         raise
 
 
-# Arguments are passed separately, never interpolated into PowerShell source.
-# Wait for the parent, preserve a backup, and retry transient antivirus/file locks.
+# The helper confirms readiness BEFORE the app closes. Wait for this exact app
+# process, never its parent (which can be Explorer or a persistent launcher).
 INSTALL_SCRIPT = r'''
-param([int]$ParentId, [string]$Target, [string]$Source, [string]$Folder)
+param([int]$AppId, [string]$Target, [string]$Source, [string]$Folder, [string]$Checksum, [switch]$NoUI)
 $ErrorActionPreference = 'Stop'
-Wait-Process -Id $ParentId -ErrorAction SilentlyContinue
 $Backup = "$Target.previous"
-$Installed = $false
-for ($i = 0; $i -lt 60; $i++) {
-    try {
-        if (Test-Path -LiteralPath $Target) {
-            Move-Item -LiteralPath $Target -Destination $Backup -Force
-        }
-        Move-Item -LiteralPath $Source -Destination $Target -Force
-        $Installed = $true
-        break
-    } catch { Start-Sleep -Milliseconds 500 }
-}
-if (-not $Installed) {
-    if (Test-Path -LiteralPath $Backup) {
-        Move-Item -LiteralPath $Backup -Destination $Target -Force
-    }
-    Add-Type -AssemblyName PresentationFramework
-    [System.Windows.MessageBox]::Show('Não foi possível instalar a atualização. A versão anterior foi preservada.', 'Kupotube')
-    exit 1
-}
-# A restarted PyInstaller onefile must extract its own files, not reuse the parent bundle.
-$env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+$Incoming = Join-Path (Split-Path -Parent $Target) ('.kupotube-' + [guid]::NewGuid().ToString('N') + '.tmp')
+$MovedOriginal = $false
 try {
+    # Staging may be on another disk: finish and verify the copy before touching the old app.
+    Copy-Item -LiteralPath $Source -Destination $Incoming
+    if ((Get-FileHash -LiteralPath $Incoming -Algorithm SHA256).Hash.ToLower() -ne $Checksum) {
+        throw 'A cópia da atualização falhou na verificação.'
+    }
+    Set-Content -LiteralPath (Join-Path $Folder 'ready') -Value 'ready'
+    $App = Get-Process -Id $AppId -ErrorAction SilentlyContinue
+    if ($App) { Wait-Process -Id $AppId -Timeout 120 -ErrorAction Stop }
+    $Installed = $false
+    for ($i = 0; $i -lt 120; $i++) {
+        try {
+            if (-not $MovedOriginal -and (Test-Path -LiteralPath $Target)) {
+                Move-Item -LiteralPath $Target -Destination $Backup -Force
+                $MovedOriginal = $true
+            }
+            Move-Item -LiteralPath $Incoming -Destination $Target -Force
+            $Installed = $true
+            break
+        } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $Installed) { throw 'O Windows não liberou o executável para atualização.' }
+    $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
     Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target)
+    Remove-Item -LiteralPath $Backup -Force -ErrorAction SilentlyContinue
+    # Retry cleanup in case antivirus still holds a temporary file.
+    for ($i = 0; $i -lt 10; $i++) {
+        Remove-Item -LiteralPath $Folder -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path -LiteralPath $Folder)) { break }
+        Start-Sleep -Milliseconds 500
+    }
 } catch {
-    Move-Item -LiteralPath $Backup -Destination $Target -Force
-    Start-Process -FilePath $Target
+    $Failure = $_.Exception.Message
+    if ($MovedOriginal -and (Test-Path -LiteralPath $Backup)) {
+        Move-Item -LiteralPath $Backup -Destination $Target -Force
+        $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+        Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target)
+    }
+    Remove-Item -LiteralPath $Incoming -Force -ErrorAction SilentlyContinue
+    Set-Content -LiteralPath (Join-Path $Folder 'error.txt') -Value $Failure
+    if (-not $NoUI) {
+        Add-Type -AssemblyName PresentationFramework
+        [System.Windows.MessageBox]::Show(('A atualização não foi instalada. A versão anterior foi preservada.' + [Environment]::NewLine + $Failure), 'Kupotube') | Out-Null
+    }
     exit 1
 }
-Remove-Item -LiteralPath $Backup -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $Folder -Recurse -Force -ErrorAction SilentlyContinue
 '''
 
 
-def stage_update(manifest, progress):
+def stage_update(manifest, progress, no_ui=False):
     if os.name != 'nt' or not getattr(sys, 'frozen', False):
         raise RuntimeError('Atualizações automáticas estão disponíveis no executável Windows.')
     executable = Path(sys.executable).resolve()
-    folder = Path(tempfile.mkdtemp(prefix='kupotube-update-', dir=executable.parent))
+    updates = data_dir() / 'updates'
+    updates.mkdir(parents=True, exist_ok=True)
+    folder = Path(tempfile.mkdtemp(prefix='kupotube-update-', dir=updates))
     try:
         target = folder / 'Kupotube.exe'
         download_update(manifest, target, progress)
         script = folder / 'install.ps1'
         script.write_text(INSTALL_SCRIPT, encoding='utf-8-sig')
-        # Account for the PyInstaller bootloader, which also holds the executable open.
-        parent_id = os.getppid()
-        process = subprocess.Popen([
+        app_id = os.getpid()
+        command = [
             'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-            '-File', str(script), '-ParentId', str(parent_id), '-Target', str(executable),
-            '-Source', str(target), '-Folder', str(folder),
-        ], creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+            '-File', str(script), '-AppId', str(app_id), '-Target', str(executable),
+            '-Source', str(target), '-Folder', str(folder), '-Checksum', manifest['sha256'],
+        ]
+        if no_ui:
+            command.append('-NoUI')
+        process = subprocess.Popen(command, cwd=str(updates), creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+        deadline = time.monotonic() + 60
+        while not (folder / 'ready').exists():
+            if process.poll() is not None:
+                raise RuntimeError('O instalador não iniciou. O app continuará aberto.')
+            if time.monotonic() >= deadline:
+                process.terminate()
+                process.wait(timeout=5)
+                raise RuntimeError('O instalador não confirmou que está pronto. O app continuará aberto.')
+            time.sleep(.1)
+        if process.poll() is not None:
+            raise RuntimeError('O instalador encerrou antes de receber a atualização.')
         return process
     except Exception:
         import shutil

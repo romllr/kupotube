@@ -1,0 +1,42 @@
+"""Run against the CI-built onefile fixture, with a persistent parent process."""
+from pathlib import Path
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import traceback
+
+
+def main():
+    with tempfile.TemporaryDirectory(prefix='kupo-smoke-') as temporary:
+        root = Path(temporary)
+        import shutil
+        target = root / 'KupoFixture.exe'
+        shutil.copyfile(sys.argv[1], target)
+        task_env = dict(os.environ, KUPOTUBE_UPDATE_SMOKE_ROOT=str(root), LOCALAPPDATA=str(root / 'profile'))
+        parent = subprocess.Popen([str(target)], env=task_env)
+        assert parent.wait(timeout=90) == 0, 'Old app could not hand off to installer'
+        deadline = time.monotonic() + 90
+        while not (root / 'restarted').exists() and time.monotonic() < deadline:
+            failures = list(root.rglob('error.txt'))
+            if failures:
+                raise AssertionError(failures[0].read_text(errors='replace'))
+            time.sleep(.2)
+        assert (root / 'restarted').exists(), 'New executable did not restart while its launcher remained alive'
+        deadline = time.monotonic() + 15
+        while (list((root / 'profile').rglob('kupotube-update-*')) or list(root.glob('*.previous'))) and time.monotonic() < deadline:
+            time.sleep(.2)
+        assert not list((root / 'profile').rglob('kupotube-update-*')), 'Staging was not cleaned'
+        assert not list(root.glob('.kupotube-*.tmp')), 'Incoming copy was not cleaned'
+        assert not list(root.glob('*.previous')), 'Backup was not cleaned'
+        print('Onefile update verified: handoff, replacement, restart and cleanup with persistent parent')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception:
+        detail = traceback.format_exc().replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+        print(f'::error title=Falha na atualização empacotada::{detail}', flush=True)
+        raise

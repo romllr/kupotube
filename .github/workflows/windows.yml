@@ -22,6 +22,10 @@ jobs:
           python -m pip install pyinstaller==6.16.0 imageio-ffmpeg==0.6.0 playwright==1.64.0 "yt-dlp[default,curl-cffi]==2026.8.19"
       - name: Testar
         run: python -m pytest -q
+      - name: Validar atualização e reinício empacotados
+        run: |
+          python -m PyInstaller --noconfirm --onefile --paths . --distpath updater-smoke --workpath build/updater-smoke --name KupoFixture tests/updater_fixture.py
+          python tests/windows_update_smoke.py updater-smoke/KupoFixture.exe
       - name: Validar interface e progresso
         shell: pwsh
         run: |
