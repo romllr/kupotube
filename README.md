@@ -32,14 +32,34 @@ python -m venv .venv
 .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-Abra o servidor no navegador. Cole um link HTTPS público, busque as qualidades e baixe o vídeo. A resolução indicada corresponde à altura do arquivo; vídeos verticais podem apresentar valores diferentes dos nomes comerciais. O download escolhe a melhor faixa até a altura solicitada e inclui áudio. O contêiner final depende dos formatos disponíveis, com preferência por MP4 ao juntar faixas.
+Abra o servidor no navegador. Cole um link HTTPS público, busque as qualidades e baixe o vídeo. A resolução indicada corresponde à altura do arquivo; vídeos verticais podem apresentar valores diferentes dos nomes comerciais. O download escolhe a melhor faixa até a altura solicitada e inclui áudio. É possível escolher MP4, MKV ou WebM. O FFmpeg ajusta o contêiner sem recodificar o vídeo: WebM exige faixas compatíveis e pode não estar disponível; MKV aceita mais codecs. Se o site não oferecer faixas compatíveis com o formato escolhido, o app informa a falha e permite tentar outro formato.
 
 ```sh
 .venv/bin/python -m pytest -q
 ```
 
-Os testes usam o extrator simulado para validar seleção de qualidade, respostas e limpeza de arquivos sem depender dos sites. Downloads reais podem exigir autenticação, sofrer bloqueios de IP ou falhar após alterações das plataformas. Esta versão não recebe cookies de usuários.
+Os testes usam o extrator simulado para validar qualidade, formatos, eventos de progresso, respostas, salvamento, limpeza e execução em segundo plano sem depender dos sites. Downloads reais podem exigir autenticação, sofrer bloqueios de IP ou falhar após alterações das plataformas. Esta versão não recebe cookies de usuários.
 
 ## Escopo
 
-Versão inicial para uso local/pessoal. Os arquivos temporários são removidos depois da resposta. Downloads têm limite configurado de 2 GiB, quando o tamanho é conhecido; o navegador mantém o arquivo em memória antes de salvá-lo. Antes de oferecer acesso público, adicione autenticação, limites de concorrência/armazenamento e isolamento de rede do processo yt-dlp, incluindo controle dos destinos de redirecionamentos. A validação inicial de domínio não substitui esse isolamento. Use apenas conteúdo próprio ou autorizado.
+Versão inicial para uso local/pessoal. No desktop, o destino é escolhido antes de baixar; arquivos temporários são criados no mesmo disco e renomeados ao concluir, evitando copiar vídeos grandes. São removidos ao terminar ou falhar. A ponte JavaScript expõe somente os métodos de início e consulta de progresso; objetos internos da janela não são expostos. Downloads têm limite configurado de 2 GiB, quando o tamanho é conhecido; somente na versão de navegador o arquivo é mantido em memória antes de salvá-lo. O app Windows não carrega o vídeo inteiro na memória da interface. Antes de oferecer acesso público, adicione autenticação, limites de concorrência/armazenamento e isolamento de rede do processo yt-dlp, incluindo controle dos destinos de redirecionamentos. A validação inicial de domínio não substitui esse isolamento. Use apenas conteúdo próprio ou autorizado.
+
+## Progresso e avisos
+
+O download do app Windows roda em uma tarefa separada, com consulta de progresso
+pela interface a cada 350 ms. O percentual corresponde à faixa atual (vídeo ou
+áudio); faixas separadas podem começar novamente em 0%. Quando o tamanho não é
+conhecido, a barra fica indeterminada; estimativas aparecem com ≈. A junção e o
+ajuste de formato têm indicação própria, sem inventar um percentual de FFmpeg.
+A conclusão só é sinalizada depois que o arquivo foi salvo no destino.
+
+Ao concluir, há um aviso no canto inferior direito **dentro do app** e um som suave.
+O botão de alto-falante permite desativar o som, com preferência lembrada.
+Os ícones Phosphor estão incluídos localmente (licença em `static/icons/LICENSE`),
+sem depender de CDN. O ícone Windows inclui a silhueta YouTube em Macchiato.
+A inicialização do executável único ainda exige a extração interna das dependências;
+isso pode levar alguns segundos, especialmente com antivírus ativo.
+
+Teste adicional da interface (requer Playwright e Chromium ou Edge): com o servidor
+em `127.0.0.1:8010`, execute `python tests/ui_smoke.py`. O workflow Windows também
+executa esse teste com o Edge, usando eventos de download simulados.

@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#24273a"><title>Kupotube — seu vídeo, com você</title>
-  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+  <link rel="icon" href="/kupotube.ico"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
 </head>
 <body>
-  <header><a class="brand" href="/" aria-label="Kupotube início"><span class="logo">▶</span> kupotube<span class="dot">.</span></a><span class="header-note">SEU PRÓXIMO VÍDEO FAVORITO. OFFLINE.</span></header>
+  <header><a class="brand" href="/" aria-label="Kupotube início"><span class="logo"><img src="/icons/youtube-logo.svg" alt=""></span> kupotube<span class="dot">.</span></a><div class="header-actions"><span class="header-note">SEU PRÓXIMO VÍDEO FAVORITO. OFFLINE.</span><button id="sound" class="icon-button" type="button" aria-label="Som de conclusão" aria-pressed="true"><img src="/icons/speaker-high.svg" alt=""></button></div></header>
   <main>
     <div class="eyebrow"><span></span> DO LINK PARA O SEU DISPOSITIVO</div>
     <h1>Viu. Curtiu.<br><em>Baixou.</em></h1>
     <p class="intro">Seus vídeos favoritos, para levar com você.<br>Cole o link, escolha a qualidade e deixe com a gente.</p>
     <section class="card" aria-label="Baixar vídeo">
-      <form id="form"><label for="url">O que vamos baixar hoje?</label><div class="input-row"><span class="link-icon" aria-hidden="true">↗</span><input id="url" name="url" type="url" placeholder="Cole o link do vídeo aqui…" required autocomplete="off" aria-describedby="hint"><button id="analyze" type="submit">Buscar vídeo <span>↗</span></button></div><p id="hint">YouTube, Shorts, TikTok, Pinterest e Instagram Reels</p></form>
-      <div id="result" hidden><div class="video-summary"><span class="video-icon">▶</span><div><span class="small">PRONTO PARA BAIXAR</span><h2 id="title"></h2><p id="meta"></p></div></div><div class="download-row"><div class="quality-field"><label for="quality">Qualidade do vídeo</label><select id="quality"></select></div><button id="download">Baixar vídeo <span>↓</span></button></div><p class="format-note">A resolução exibida é a altura do vídeo. Áudio incluído.</p></div>
-      <p id="status" role="status" aria-live="polite"></p>
+      <form id="form"><label for="url">O que vamos baixar hoje?</label><div class="input-row"><img class="link-icon" src="/icons/link.svg" alt=""><input id="url" name="url" type="url" placeholder="Cole o link do vídeo aqui…" required autocomplete="off" aria-describedby="hint"><button id="analyze" type="submit">Buscar vídeo <img src="/icons/arrow-up-right.svg" alt=""></button></div><p id="hint">YouTube, Shorts, TikTok, Pinterest e Instagram Reels</p></form>
+      <div id="result" hidden><div class="video-summary"><span class="video-icon"><img src="/icons/film-strip.svg" alt=""></span><div><span class="small">PRONTO PARA BAIXAR</span><h2 id="title"></h2><p id="meta"></p></div></div><div class="download-row"><div class="quality-field"><label for="quality">Qualidade do vídeo</label><select id="quality"></select></div><div class="quality-field format-field"><label for="container">Formato</label><select id="container"><option value="mp4">MP4</option><option value="mkv">MKV</option><option value="webm">WebM</option></select></div><button id="download">Baixar vídeo <img src="/icons/download-simple.svg" alt=""></button></div><p class="format-note">Áudio incluído. WebM depende de faixas compatíveis; MKV aceita mais codecs.</p></div>
+      <div id="progress" hidden><div class="progress-heading"><span id="progress-label"></span><strong id="progress-value"></strong></div><div id="progress-meter" class="progress-meter" role="progressbar" aria-label="Progresso do download" aria-valuemin="0" aria-valuemax="100"><div id="progress-bar"></div></div><p id="progress-detail"></p></div><p id="status" role="status" aria-live="polite"></p>
     </section>
-    <div class="platforms"><span>UM LINK. VÁRIAS POSSIBILIDADES.</span><div><b>▶ YouTube</b><b>♪ TikTok</b><b>Ⓟ Pinterest</b><b>◎ Instagram</b></div></div>
+    <div class="platforms"><span>UM LINK. VÁRIAS POSSIBILIDADES.</span><div><b><img src="/icons/youtube-logo.svg" alt=""> YouTube</b><b><img src="/icons/tiktok-logo.svg" alt=""> TikTok</b><b><img src="/icons/pinterest-logo.svg" alt=""> Pinterest</b><b><img src="/icons/instagram-logo.svg" alt=""> Instagram</b></div></div>
     <section class="steps" aria-label="Como funciona"><article><span>01 /</span><h3>Copie o link</h3><p>Encontrou aquele vídeo?<br>Copie o link de compartilhamento.</p></article><article><span>02 /</span><h3>Do seu jeito</h3><p>Escolha entre as qualidades<br>disponíveis, até 4K e além.</p></article><article><span>03 /</span><h3>Leve com você</h3><p>Um clique para baixar.<br>Simples assim, sempre com você.</p></article></section>
   </main>
-  <footer><span>Feito para simplificar <i>✦</i></span><p>Baixe apenas conteúdos seus ou que você tem autorização para salvar.<br>A disponibilidade depende de cada plataforma.</p><span>kupotube © 2026</span></footer>
-</body></html>
+  <footer><span>Feito para simplificar</span><p>Baixe apenas conteúdos seus ou que você tem autorização para salvar.<br>A disponibilidade depende de cada plataforma.</p><span>kupotube © 2026</span></footer>
+<aside id="toast" class="toast" role="status" aria-live="polite" hidden><img src="/icons/check-circle.svg" alt=""><div><strong>Vídeo baixado!</strong><p id="toast-text"></p></div><button id="toast-close" class="icon-button" aria-label="Fechar aviso"><img src="/icons/x.svg" alt=""></button></aside></body></html>

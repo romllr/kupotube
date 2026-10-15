@@ -1,13 +1,64 @@
-const form = document.querySelector('#form');
-const url = document.querySelector('#url');
-const result = document.querySelector('#result');
-const status = document.querySelector('#status');
-const analyze = document.querySelector('#analyze');
-const download = document.querySelector('#download');
-const quality = document.querySelector('#quality');
-let selectedUrl = '';
-let busy = false;
+const $ = selector => document.querySelector(selector);
+const form = $('#form'), url = $('#url'), result = $('#result'), status = $('#status');
+const analyze = $('#analyze'), download = $('#download'), quality = $('#quality'), container = $('#container');
+const progress = $('#progress'), progressBar = $('#progress-bar'), progressLabel = $('#progress-label');
+let selectedUrl = '', videoTitle = '', busy = false, audioContext, toastTimer;
+let soundEnabled = localStorage.getItem('kupotube-sound') !== 'off';
 function message(text, error = false) { status.textContent = text; status.classList.toggle('error', error); }
+function setBusy(value) {
+  busy = value;
+  for (const element of [analyze, download, url, quality, container]) element.disabled = value;
+}
+function updateSound() {
+  $('#sound').setAttribute('aria-pressed', String(soundEnabled));
+  $('#sound').title = soundEnabled ? 'Desativar som de conclusão' : 'Ativar som de conclusão';
+  $('#sound img').src = `/icons/speaker-${soundEnabled ? 'high' : 'slash'}.svg`;
+}
+$('#sound').addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('kupotube-sound', soundEnabled ? 'on' : 'off'); updateSound();
+});
+updateSound();
+function prepareAudio() {
+  if (!soundEnabled) return;
+  try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(() => {}); } catch (_) {}
+}
+function notifyComplete(text) {
+  $('#toast-text').textContent = text;
+  $('#toast').hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 8000);
+  if (!soundEnabled || !audioContext) return;
+  try {
+    const now = audioContext.currentTime;
+    [660, 880].forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+      oscillator.type = 'sine'; oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0, now + index * .14);
+      gain.gain.linearRampToValueAtTime(.045, now + index * .14 + .025);
+      gain.gain.exponentialRampToValueAtTime(.001, now + index * .14 + .45);
+      oscillator.connect(gain); gain.connect(audioContext.destination);
+      oscillator.start(now + index * .14); oscillator.stop(now + index * .14 + .5);
+    });
+  } catch (_) {}
+}
+$('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; });
+function showProgress(data) {
+  progress.hidden = false;
+  const known = Number.isFinite(data.percent);
+  progressBar.classList.toggle('indeterminate', !known);
+  progressBar.style.width = known ? `${Math.max(0, Math.min(100, data.percent))}%` : '35%';
+  const meter = $('#progress-meter');
+  if (known) meter.setAttribute('aria-valuenow', String(Math.round(data.percent)));
+  else meter.removeAttribute('aria-valuenow');
+  const labels = {choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: 'Juntando áudio e vídeo / ajustando formato', saving: 'Salvando arquivo', complete: 'Download concluído'};
+  progressLabel.textContent = data.state === 'downloading' ? `Baixando ${data.track === 'Áudio' ? 'áudio' : 'vídeo'}` : (labels[data.state] || 'Preparando');
+  $('#progress-value').textContent = known ? `${data.estimated ? '≈ ' : ''}${Math.floor(data.percent)}%` : '…';
+  const details = [];
+  if (data.speed > 0) details.push(`${(data.speed / 1024 / 1024).toFixed(1)} MB/s`);
+  if (Number.isFinite(data.eta)) details.push(`Faltam ~${Math.ceil(data.eta)} s`);
+  if (data.state === 'downloading') details.push('Progresso da faixa atual');
+  $('#progress-detail').textContent = details.join(' · ');
+}
 async function request(path, body) {
   const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   if (!response.ok) {
@@ -16,18 +67,17 @@ async function request(path, body) {
   }
   return response;
 }
-url.addEventListener('input', () => { result.hidden = true; selectedUrl = ''; message(''); });
+url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; message(''); });
 form.addEventListener('submit', async event => {
-  event.preventDefault();
-  if (busy) return;
-  busy = true; analyze.disabled = true; url.disabled = true; result.hidden = true;
+  event.preventDefault(); if (busy) return;
+  setBusy(true); result.hidden = true; progress.hidden = true;
   message('Buscando o vídeo e as qualidades disponíveis…');
   try {
     const link = url.value.trim();
     const data = await (await request('/api/info', {url: link})).json();
-    selectedUrl = link;
-    document.querySelector('#title').textContent = data.title;
-    document.querySelector('#meta').textContent = [data.uploader, data.duration ? `${Math.floor(data.duration / 60)}:${String(Math.floor(data.duration % 60)).padStart(2, '0')}` : ''].filter(Boolean).join(' · ');
+    selectedUrl = link; videoTitle = data.title;
+    $('#title').textContent = data.title;
+    $('#meta').textContent = [data.uploader, data.duration ? `${Math.floor(data.duration / 60)}:${String(Math.floor(data.duration % 60)).padStart(2, '0')}` : ''].filter(Boolean).join(' · ');
     quality.replaceChildren(...data.qualities.map(height => {
       const option = document.createElement('option'); option.value = height;
       option.textContent = `${height}p${height === 2160 ? ' · 4K' : height === 1440 ? ' · QHD' : height === 1080 ? ' · Full HD' : height === 720 ? ' · HD' : ''}`;
@@ -36,29 +86,43 @@ form.addEventListener('submit', async event => {
     quality.value = data.qualities.find(h => h <= 1080) || data.qualities[0];
     result.hidden = false; message('');
   } catch (error) { message(error.message, true); }
-  finally { busy = false; analyze.disabled = false; url.disabled = false; }
+  finally { setBusy(false); }
 });
+async function followDownload() {
+  for (;;) {
+    const data = await window.pywebview.api.get_progress();
+    if (data.state === 'error') throw new Error(data.error);
+    showProgress(data);
+    if (data.state === 'complete') return data;
+    await new Promise(resolve => setTimeout(resolve, 350));
+  }
+}
 download.addEventListener('click', async () => {
   if (!selectedUrl || busy) return;
-  busy = true; download.disabled = true; analyze.disabled = true; url.disabled = true;
-  message('Preparando seu vídeo… O download começará quando o arquivo estiver pronto.');
+  prepareAudio(); setBusy(true); message('');
+  showProgress({state: 'preparing', percent: null});
+  progress.scrollIntoView({behavior: 'smooth', block: 'nearest'});
   try {
     if (window.pywebview?.api) {
-      const outcome = await window.pywebview.api.save_video(selectedUrl, Number(quality.value));
+      const outcome = await window.pywebview.api.start_download(selectedUrl, Number(quality.value), container.value, videoTitle);
       if (outcome.error) throw new Error(outcome.error);
-      message(outcome.cancelled ? 'Salvamento cancelado.' : 'Vídeo salvo! Pronto para levar com você.');
+      if (outcome.cancelled) { progress.hidden = true; message('Salvamento cancelado.'); return; }
+      const completed = await followDownload();
+      message('Vídeo salvo! Pronto para levar com você.');
+      notifyComplete(completed.filename || 'Seu vídeo foi salvo.');
       return;
     }
-    const response = await request('/api/download', {url: selectedUrl, quality: Number(quality.value)});
+    message('Preparando o vídeo. O progresso detalhado está disponível no aplicativo Windows.');
+    const response = await request('/api/download', {url: selectedUrl, quality: Number(quality.value), container: container.value});
     const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a'); anchor.href = objectUrl;
+    const objectUrl = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = objectUrl;
     const disposition = response.headers.get('Content-Disposition') || '';
     const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-    anchor.download = encoded ? decodeURIComponent(encoded[1]) : (disposition.match(/filename="([^"]+)"/)?.[1] || 'kupotube.mp4');
+    anchor.download = encoded ? decodeURIComponent(encoded[1]) : (disposition.match(/filename="([^"]+)"/)?.[1] || `kupotube.${container.value}`);
     document.body.append(anchor); anchor.click(); anchor.remove();
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-    message('Arquivo pronto! Confira os downloads do navegador.');
-  } catch (error) { message(error.message, true); }
-  finally { busy = false; download.disabled = false; analyze.disabled = false; url.disabled = false; }
+    showProgress({state: 'complete', percent: 100});
+    message('Arquivo enviado aos downloads do navegador.'); notifyComplete('Arquivo pronto para salvar no navegador.');
+  } catch (error) { progress.hidden = true; message(error.message, true); }
+  finally { setBusy(false); }
 });

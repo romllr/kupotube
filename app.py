@@ -4,6 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
+from typing import Literal
 
 import yt_dlp
 from fastapi import FastAPI, HTTPException
@@ -23,6 +24,7 @@ class Request(BaseModel):
 
 class Download(Request):
     quality: int = Field(default=1080, ge=144, le=4320)
+    container: Literal['mp4', 'mkv', 'webm'] = 'mp4'
 
 
 def validate_url(url):
@@ -43,7 +45,8 @@ def validate_url(url):
 
 def options():
     opts = {"noplaylist": True, "quiet": True, "no_warnings": True,
-            "socket_timeout": 30, "retries": 2, "cachedir": False}
+            "socket_timeout": 20, "retries": 2, "cachedir": False,
+            "concurrent_fragment_downloads": 4}
     if getattr(sys, "frozen", False):
         opts["ffmpeg_location"] = str(ROOT / "tools")
         opts["js_runtimes"] = {"node": {"path": str(ROOT / "tools" / "node.exe")}}
@@ -70,13 +73,33 @@ def info(body: Request):
 
 @app.post("/api/download")
 def download(body: Download):
+    return prepare_download(body)
+
+
+def prepare_download(body: Download, progress=None, directory=None):
     url = validate_url(body.url)
-    folder = tempfile.TemporaryDirectory(prefix="kupotube-")
+    folder = tempfile.TemporaryDirectory(prefix="kupotube-", dir=directory)
     try:
+        # Remux only: never silently transcode a large video on the user's CPU.
+        video_filter = '[ext=webm]' if body.container == 'webm' else ''
+        audio_filter = '[ext=webm]' if body.container == 'webm' else ''
         opts = options() | {"outtmpl": str(Path(folder.name) / "video.%(ext)s"),
-                            "format": f"bv*[height<={body.quality}]+ba/b[height<={body.quality}]",
-                            "merge_output_format": "mp4", "restrictfilenames": True,
+                            "format": f"bv*{video_filter}[height<={body.quality}]+ba{audio_filter}/b{video_filter}[height<={body.quality}]",
+                            "merge_output_format": body.container, "restrictfilenames": True,
+                            "postprocessors": [{'key': 'FFmpegVideoRemuxer', 'preferedformat': body.container}],
                             "max_filesize": 2 * 1024**3}
+        if progress:
+            def hook(data):
+                total = data.get('total_bytes') or data.get('total_bytes_estimate')
+                downloaded = data.get('downloaded_bytes') or 0
+                percent = min(100, downloaded / total * 100) if total else None
+                progress({'state': 'downloading' if data['status'] == 'downloading' else 'processing',
+                          'percent': percent if data['status'] == 'downloading' else None,
+                          'estimated': not bool(data.get('total_bytes')),
+                          'track': 'Áudio' if data.get('info_dict', {}).get('vcodec') == 'none' else 'Vídeo',
+                          'speed': data.get('speed'), 'eta': data.get('eta')})
+            opts['progress_hooks'] = [hook]
+            opts['postprocessor_hooks'] = [lambda _: progress({'state': 'processing', 'percent': None})]
         with yt_dlp.YoutubeDL(opts) as downloader:
             data = downloader.extract_info(url, download=True)
         files = [p for p in Path(folder.name).iterdir() if p.suffix not in (".part", ".ytdl")]
