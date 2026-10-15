@@ -89,7 +89,12 @@ $MovedOriginal = $false
 try {
     # Staging may be on another disk: finish and verify the copy before touching the old app.
     Copy-Item -LiteralPath $Source -Destination $Incoming
-    if ((Get-FileHash -LiteralPath $Incoming -Algorithm SHA256).Hash.ToLower() -ne $Checksum) {
+    # Use built-in .NET crypto, independent of installed PowerShell utility modules.
+    $Hasher = [System.Security.Cryptography.SHA256]::Create()
+    $InputStream = [System.IO.File]::OpenRead($Incoming)
+    try { $ActualHash = [BitConverter]::ToString($Hasher.ComputeHash($InputStream)).Replace('-', '').ToLowerInvariant() }
+    finally { $InputStream.Dispose(); $Hasher.Dispose() }
+    if ($ActualHash -ne $Checksum) {
         throw 'A cópia da atualização falhou na verificação.'
     }
     Set-Content -LiteralPath (Join-Path $Folder 'ready') -Value 'ready'
