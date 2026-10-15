@@ -166,11 +166,29 @@ def stage_update(manifest, progress, no_ui=False):
         target = folder / 'Kupotube.exe'
         download_update(manifest, target, progress)
         command = helper_command(os.getpid(), executable, target, folder, manifest['sha256'], no_ui)
-        process = subprocess.Popen(command, cwd=str(updates), creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+        # PyInstaller changes Windows DLL lookup globally. System PowerShell must
+        # load system DLLs, not DLLs from the extracted Python bundle.
+        bundle_root = getattr(sys, '_MEIPASS', None)
+        reset_dll = None
+        if bundle_root and sys.platform == 'win32':
+            import ctypes
+            reset_dll = ctypes.windll.kernel32.SetDllDirectoryW
+            reset_dll.argtypes = [ctypes.c_wchar_p]
+            reset_dll(None)
+        launcher_log = updates.parent / 'updater.log'
+        try:
+            with launcher_log.open('wb') as output:
+                process = subprocess.Popen(command, cwd=str(updates), stdin=subprocess.DEVNULL,
+                                           stdout=output, stderr=subprocess.STDOUT,
+                                           creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+        finally:
+            if reset_dll:
+                reset_dll(str(bundle_root))
         deadline = time.monotonic() + 60
         while not (folder / 'ready').exists():
             if process.poll() is not None:
-                raise RuntimeError('O instalador não iniciou. O app continuará aberto.')
+                detail = launcher_log.read_text(encoding='utf-8', errors='replace')[-2500:]
+                raise RuntimeError('O instalador não iniciou. O app continuará aberto. ' + detail)
             if time.monotonic() >= deadline:
                 process.terminate()
                 process.wait(timeout=5)
