@@ -237,3 +237,12 @@ cookiesDialog.addEventListener('click', event => {
   const bounds = cookiesDialog.getBoundingClientRect();
   if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) cookiesDialog.close();
 });
+
+const releasesDialog = $('#releases-dialog');
+$('#release-news').addEventListener('click', () => { if (!releasesDialog.open) releasesDialog.showModal(); });
+releasesDialog.addEventListener('close', () => $('#release-news').focus());
+releasesDialog.addEventListener('click', event => {
+  if (event.target !== releasesDialog) return;
+  const bounds = releasesDialog.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) releasesDialog.close();
+});

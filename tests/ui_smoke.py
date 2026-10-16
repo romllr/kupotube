@@ -26,8 +26,8 @@ with sync_playwright() as p:
       start_download: async (url, quality, format) => { window.polls = 0; window.lastFormat = format; return {started: true}; },
       check_update: async () => {
         await new Promise(resolve => setTimeout(resolve,100));
-        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.3'};
-        return {available:window.updateMode !== 'latest',current:'0.3.3',version:'99.0.0'};
+        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.4'};
+        return {available:window.updateMode !== 'latest',current:'0.3.4',version:'99.0.0'};
       },
       install_update: async () => ({started:true}),
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
@@ -45,6 +45,20 @@ with sync_playwright() as p:
     assert page.locator('.maker-credit').inner_text() == 'Made by romllr <3'
     assert page.locator('.maker-credit').evaluate("e => getComputedStyle(e).color") == 'rgb(245, 189, 230)'
     assert page.locator('html').evaluate("e => getComputedStyle(e).scrollbarColor") == 'rgb(110, 115, 141) rgb(30, 32, 48)'
+    assert page.locator('h1').inner_text() == 'Baixador de vídeos.'
+    assert page.locator('.intro').inner_text() == 'Simples, rápido e fácil.'
+    assert page.locator('.eyebrow').inner_text() == 'Download em segundos.'
+    assert 'YouTube' in page.locator('.session-options summary').inner_text()
+    assert page.locator('.header-note').count() == 0
+    page.click('#release-news')
+    expect(page.locator('#releases-dialog')).to_be_visible()
+    assert page.locator('.release-list details').count() == 3
+    assert page.locator('.release-list details').first.get_attribute('open') is not None
+    page.locator('.release-list summary').nth(1).click()
+    expect(page.locator('.release-list details').nth(1).locator('ul')).to_be_visible()
+    assert 'Buscar vídeo' in page.locator('.release-list details').nth(1).inner_text()
+    page.keyboard.press('Escape')
+    expect(page.locator('#release-news')).to_be_focused()
     button = page.locator('#analyze')
     original_box = button.bounding_box()
     original_background = button.evaluate('e => getComputedStyle(e).backgroundImage')
@@ -97,7 +111,7 @@ with sync_playwright() as p:
     page.click('#check-update')
     page.wait_for_selector('#update-dialog[open]')
     assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
-    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.3'
+    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.4'
     expect(page.locator('#update-dialog-confirm')).to_be_focused()
     assert page.locator('#update-banner').is_hidden()
     page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None
@@ -131,6 +145,21 @@ with sync_playwright() as p:
     assert page.locator('#cookies-dialog').bounding_box()['height'] <= 750 - 47
     page.locator('#cookies-dialog .dialog-confirm').click()
     expect(page.locator('#cookies-dialog')).not_to_be_visible()
+    for width, height in [(360, 650), (580, 650), (800, 700), (1280, 900), (1920, 1080)]:
+        page.set_viewport_size({'width':width,'height':height})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), width
+        assert abs(page.locator('main').bounding_box()['width'] - page.evaluate('document.documentElement.clientWidth')) < 1
+        page.click('#release-news')
+        dialog = page.locator('#releases-dialog')
+        expect(dialog).to_be_visible()
+        box = dialog.bounding_box()
+        assert box['x'] >= 0 and box['y'] >= 0 and box['height'] <= height - 39, (width, box)
+        assert dialog.evaluate('e => e.scrollWidth <= e.clientWidth'), width
+        page.keyboard.press('Escape')
+        expect(page.locator('#release-news')).to_be_focused()
+    page.set_viewport_size({'width':1280,'height':900})
+    page.evaluate('window.scrollTo(0,0)')
+    if sys.platform != 'win32': page.screenshot(path='/tmp/kupotube-034.png', full_page=True)
     assert page.locator('img').evaluate_all('(images) => images.every(i => i.complete && i.naturalWidth > 0)')
     assert not errors, errors
     print('UI passed: cookie tutorial, focus/Escape, Macchiato scrollbar/footer, stable hover, responsive modal and download/update regressions')
