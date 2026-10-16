@@ -4,6 +4,7 @@ const analyze = $('#analyze'), download = $('#download'), quality = $('#quality'
 const progress = $('#progress'), progressBar = $('#progress-bar'), progressLabel = $('#progress-label');
 let selectedUrl = '', videoTitle = '', busy = false, audioContext, toastTimer;
 let chosenLink = '', selectedRange = null, videoDuration = null, selectionTrigger = url;
+let toastExit;
 let soundEnabled = localStorage.getItem('kupotube-sound') !== 'off';
 function message(text, error = false) { status.textContent = text; status.classList.toggle('error', error); }
 function setBusy(value) {
@@ -27,9 +28,10 @@ function prepareAudio() {
   try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(() => {}); } catch (_) {}
 }
 function notifyComplete(text) {
+  toastExit?.cancel(); toastExit = null;
   $('#toast-text').textContent = text;
   $('#toast').hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 8000);
+  clearTimeout(toastTimer); toastTimer = setTimeout(dismissToast, 8000);
   if (!soundEnabled || !audioContext) return;
   try {
     const now = audioContext.currentTime;
@@ -44,7 +46,20 @@ function notifyComplete(text) {
     });
   } catch (_) {}
 }
-$('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; });
+async function dismissToast() {
+  clearTimeout(toastTimer);
+  const toast = $('#toast');
+  if (toast.hidden || toastExit) return;
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const animation = toast.animate([{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(6px)'}], {duration:160,easing:'ease-in',fill:'forwards'});
+    toastExit = animation;
+    try { await animation.finished; } catch (_) { return; }
+    if (toastExit !== animation) return;
+    toast.hidden = true; toastExit = null; animation.cancel();
+  } else toast.hidden = true;
+  if (toast.contains(document.activeElement)) download.focus();
+}
+$('#toast-close').addEventListener('click', dismissToast);
 function showProgress(data) {
   progress.hidden = false;
   const known = Number.isFinite(data.percent);

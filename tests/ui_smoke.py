@@ -26,8 +26,8 @@ with sync_playwright() as p:
       start_download: async (url, quality, format, title, start, end) => { window.lastRange = [start,end]; window.polls = 0; window.lastFormat = format; return {started: true}; },
       check_update: async () => {
         await new Promise(resolve => setTimeout(resolve,100));
-        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.7'};
-        return {available:window.updateMode !== 'latest',current:'0.3.7',version:'99.0.0'};
+        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.8'};
+        return {available:window.updateMode !== 'latest',current:'0.3.8',version:'99.0.0'};
       },
       install_update: async () => ({started:true}),
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
@@ -43,8 +43,8 @@ with sync_playwright() as p:
     page.goto(os.environ.get('KUPOTUBE_TEST_URL', 'http://127.0.0.1:8010/'))
     page.wait_for_selector('#update-banner',state='visible')
     page.evaluate('document.fonts.ready')
-    assert page.evaluate("document.fonts.check('16px Lato')")
-    assert page.locator('body').evaluate('e => getComputedStyle(e).fontFamily').startswith('Lato')
+    assert page.evaluate("document.fonts.check('16px Ubuntu')")
+    assert page.locator('body').evaluate('e => getComputedStyle(e).fontFamily').startswith('Ubuntu')
     assert page.locator('.maker-credit').inner_text() == 'Made by romllr <3'
     assert page.locator('.maker-credit').evaluate("e => getComputedStyle(e).color") == 'rgb(245, 189, 230)'
     assert page.locator('html').evaluate("e => getComputedStyle(e).scrollbarColor") == 'rgb(110, 115, 141) rgb(30, 32, 48)'
@@ -55,11 +55,11 @@ with sync_playwright() as p:
     assert page.locator('.header-note').count() == 0
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
-    assert page.locator('.release-list details').count() == 6
+    assert page.locator('.release-list details').count() == 7
     assert page.locator('.release-list details').first.get_attribute('open') is not None
     page.locator('.release-list summary').nth(1).click()
     expect(page.locator('.release-list details').nth(1).locator('ul')).to_be_visible()
-    assert 'Ajustes na UI.' in page.locator('.release-list details').nth(1).inner_text()
+    assert 'recorte local' in page.locator('.release-list details').nth(1).inner_text()
     page.keyboard.press('Escape')
     expect(page.locator('#release-news')).to_be_focused()
     assert page.locator('#cookies-help').evaluate('e => getComputedStyle(e).color') == 'rgb(245, 189, 230)'
@@ -74,6 +74,7 @@ with sync_playwright() as p:
     page.locator('.session-options summary').click()
     page.click('#cookies-help')
     expect(page.locator('#cookies-dialog')).to_be_visible()
+    assert page.locator('#cookies-dialog').evaluate('e => getComputedStyle(e).animationName') == 'kupo-dialog-in'
     assert page.locator('.cookies-steps li').count() == 4
     assert 'Netscape cookies.txt' in page.locator('#cookies-dialog').inner_text()
     assert 'todos os sites' in page.locator('#cookies-dialog').inner_text()
@@ -125,7 +126,7 @@ with sync_playwright() as p:
     assert page.locator('#toast-text').inner_text()=='Meu vídeo.mp4'
     assert page.locator('#download').is_enabled()
     page.click('#toast-close')
-    assert page.locator('#toast').is_hidden()
+    expect(page.locator('#toast')).to_be_hidden()
     page.click('#edit-selection')
     page.check('input[name="selection-mode"][value="full"]')
     page.locator('#selection-form button[type="submit"]').click()
@@ -144,7 +145,7 @@ with sync_playwright() as p:
     page.click('#check-update')
     page.wait_for_selector('#update-dialog[open]')
     assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
-    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.7'
+    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.8'
     expect(page.locator('#update-dialog-confirm')).to_be_focused()
     assert page.locator('#update-banner').is_hidden()
     page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None
@@ -207,6 +208,9 @@ with sync_playwright() as p:
     page.locator('#url').focus()
     expect(page.locator('#url')).to_have_attribute('placeholder','Cole o link do vídeo aqui…')
     page.emulate_media(reduced_motion='reduce')
+    page.click('#release-news')
+    assert page.locator('#releases-dialog').evaluate('e => getComputedStyle(e).animationName') == 'none'
+    page.keyboard.press('Escape')
     page.locator('.intro').click()
     page.wait_for_timeout(2400)
     expect(page.locator('#url')).to_have_attribute('placeholder','Cole o link do vídeo aqui…')
