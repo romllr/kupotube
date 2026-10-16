@@ -189,11 +189,47 @@ def test_real_ffmpeg_clip(tmp_path):
     source = tmp_path / 'source.mp4'
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=160x90:rate=24',
                     '-f','lavfi','-i','sine=frequency=440','-t','6','-c:v','libx264','-c:a','aac','-movflags','+faststart',str(source)],check=True)
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    for filename, args in [
+        ('video.mp4',['-an','-c:v','copy','-movflags','+faststart']),
+        ('audio.m4a',['-vn','-c:a','copy','-movflags','+faststart']),
+        ('video.webm',['-an','-c:v','libvpx-vp9']),
+        ('audio.webm',['-vn','-c:a','libopus'])]:
+        subprocess.run(['ffmpeg','-v','error','-i',str(source),*args,str(tmp_path / filename)],check=True)
+    class RangeHandler(http.server.SimpleHTTPRequestHandler):
+        # FFmpeg seeks in remote video streams; implement real HTTP range support.
+        def send_head(self):
+            path = Path(self.translate_path(self.path))
+            if not path.is_file():
+                return super().send_head()
+            size = path.stat().st_size
+            bounds = self.headers.get('Range', '').removeprefix('bytes=').split('-')
+            start = int(bounds[0]) if len(bounds) == 2 and bounds[0] else 0
+            end = min(int(bounds[1]),size-1) if len(bounds) == 2 and bounds[1] else size-1
+            self.remaining = end - start + 1
+            self.send_response(206 if 'Range' in self.headers else 200)
+            self.send_header('Content-Type',self.guess_type(str(path)))
+            self.send_header('Accept-Ranges','bytes')
+            self.send_header('Content-Length',str(self.remaining))
+            if 'Range' in self.headers:
+                self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
+            self.end_headers()
+            source = path.open('rb'); source.seek(start)
+            return source
+        def copyfile(self, source, output):
+            try:
+                while self.remaining > 0:
+                    data = source.read(min(65536,self.remaining))
+                    if not data: break
+                    output.write(data); self.remaining -= len(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        def log_message(self, *args):
+            pass
+    handler = functools.partial(RangeHandler, directory=str(tmp_path))
     server = http.server.ThreadingHTTPServer(('127.0.0.1',0), handler)
     threading.Thread(target=server.serve_forever,daemon=True).start()
     try:
-        for extension in ['mp4', 'mp3']:
+        for extension in ['mp4', 'mkv', 'mp3']:
             with patch('app.validate_url',side_effect=lambda value:value):
                 response = prepare_download(Download(url=f'http://127.0.0.1:{server.server_port}/source.mp4',
                                                      container=extension,start_time=1,end_time=3))
@@ -202,7 +238,27 @@ def test_real_ffmpeg_clip(tmp_path):
                 data = json.loads(probe.stdout)
                 assert abs(float(data['format']['duration']) - 2) < .2
                 assert any(stream['codec_type'] == 'audio' for stream in data['streams'])
-                assert any(stream['codec_type'] == 'video' for stream in data['streams']) == (extension == 'mp4')
+                assert any(stream['codec_type'] == 'video' for stream in data['streams']) == (extension != 'mp3')
+            finally:
+                asyncio.run(response.background())
+        # Exercise the real yt-dlp merge path, not just a combined MP4 source.
+        from yt_dlp.extractor.generic import GenericIE
+        root = f'http://127.0.0.1:{server.server_port}'
+        formats = [
+            {'format_id':'v','url':root+'/video.mp4','ext':'mp4','vcodec':'h264','acodec':'none','height':90},
+            {'format_id':'a','url':root+'/audio.m4a','ext':'m4a','vcodec':'none','acodec':'aac'},
+            {'format_id':'vw','url':root+'/video.webm','ext':'webm','vcodec':'vp9','acodec':'none','height':90},
+            {'format_id':'aw','url':root+'/audio.webm','ext':'webm','vcodec':'none','acodec':'opus'}]
+        for extension in ['mp4','mkv','webm','mp3']:
+            with patch('app.validate_url',side_effect=lambda value:value), patch.object(GenericIE,'_real_extract',return_value={'id':'separate','title':'Separate streams','duration':6,'formats':formats}):
+                response = prepare_download(Download(url=root+'/watch',container=extension,start_time=1,end_time=3))
+            try:
+                data = json.loads(subprocess.check_output(['ffprobe','-v','error','-show_format','-show_streams','-of','json',str(response.path)]))
+                assert abs(float(data['format']['duration']) - 2) < .2
+                assert any(stream['codec_type'] == 'audio' for stream in data['streams'])
+                videos = [stream for stream in data['streams'] if stream['codec_type'] == 'video']
+                assert bool(videos) == (extension != 'mp3')
+                if videos: assert videos[0]['codec_name'] == ('vp9' if extension == 'webm' else 'h264')
             finally:
                 asyncio.run(response.background())
     finally:

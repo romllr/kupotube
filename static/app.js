@@ -93,6 +93,7 @@ function showSelection(trigger = url) {
   $('#clip-fields').hidden = !selectedRange;
   $('#clip-start').value = selectedRange ? formatTimestamp(selectedRange.start_time) : '';
   $('#clip-end').value = selectedRange ? formatTimestamp(selectedRange.end_time) : '';
+  $('#clip-format').value = container.value;
   selectionDialog.showModal();
 }
 $('#selection-form').addEventListener('change', event => {
@@ -107,6 +108,7 @@ $('#selection-form').addEventListener('submit', event => {
   try {
     const range = $('input[name="selection-mode"]:checked').value === 'clip' ? {start_time: parseTimestamp($('#clip-start').value), end_time: parseTimestamp($('#clip-end').value)} : null;
     validateRange(range);
+    if (range) { container.value = $('#clip-format').value; container.dispatchEvent(new Event('change')); }
     selectedRange = range; chosenLink = url.value.trim();
     $('#selection-label').textContent = range ? `Trecho · ${formatTimestamp(range.start_time)} → ${formatTimestamp(range.end_time)}` : 'Vídeo inteiro';
     selectionDialog.close();
@@ -116,7 +118,7 @@ $('#selection-form').addEventListener('submit', event => {
 });
 selectionDialog.addEventListener('close', () => selectionTrigger.focus());
 $('#edit-selection').addEventListener('click', () => showSelection($('#edit-selection')));
-url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; message(''); });
+url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; container.value = 'mp4'; container.dispatchEvent(new Event('change')); message(''); });
 url.addEventListener('paste', event => {
   const pasted = event.clipboardData?.getData('text')?.trim();
   if (!pasted) return;
@@ -301,3 +303,33 @@ releasesDialog.addEventListener('click', event => {
   const bounds = releasesDialog.getBoundingClientRect();
   if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) releasesDialog.close();
 });
+
+// Animate only an empty, unfocused input; never change the user's text.
+const placeholderPhrases = ['Cole o link do vídeo aqui…', 'Um vídeo do YouTube? Cole aqui…', 'TikTok ou Reels? É só colar o link…'];
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let placeholderTimer, phraseIndex = 0, typedCharacters = placeholderPhrases[0].length, erasingPlaceholder = true;
+function animatePlaceholder() {
+  clearTimeout(placeholderTimer);
+  if (reducedMotion.matches || document.hidden || document.activeElement === url || url.value || busy) {
+    url.placeholder = placeholderPhrases[0]; return;
+  }
+  const phrase = placeholderPhrases[phraseIndex];
+  typedCharacters += erasingPlaceholder ? -1 : 1;
+  url.placeholder = phrase.slice(0, Math.max(0, typedCharacters));
+  let delay = erasingPlaceholder ? 32 : 65;
+  if (typedCharacters <= 0) { phraseIndex = (phraseIndex + 1) % placeholderPhrases.length; erasingPlaceholder = false; delay = 250; }
+  else if (typedCharacters >= phrase.length) { erasingPlaceholder = true; delay = 2200; }
+  placeholderTimer = setTimeout(animatePlaceholder, delay);
+}
+function restartPlaceholder() {
+  clearTimeout(placeholderTimer);
+  phraseIndex = 0; typedCharacters = placeholderPhrases[0].length; erasingPlaceholder = true;
+  url.placeholder = placeholderPhrases[0];
+  if (!reducedMotion.matches && !document.hidden && document.activeElement !== url && !url.value) placeholderTimer = setTimeout(animatePlaceholder, 2200);
+}
+url.addEventListener('focus', restartPlaceholder);
+url.addEventListener('blur', restartPlaceholder);
+url.addEventListener('input', restartPlaceholder);
+document.addEventListener('visibilitychange', restartPlaceholder);
+reducedMotion.addEventListener('change', restartPlaceholder);
+restartPlaceholder();

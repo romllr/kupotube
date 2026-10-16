@@ -6,7 +6,7 @@
   <link rel="icon" href="/kupotube.ico"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
 </head>
 <body>
-  <button id="release-news" class="release-news" type="button" aria-haspopup="dialog"><span class="news-badge">NOVIDADES</span><span>Kupotube 0.3.5 · Baixe só a parte que importa.</span><span class="news-link">Ver o que mudou <img src="/icons/arrow-up-right.svg" alt=""></span></button>
+  <button id="release-news" class="release-news" type="button" aria-haspopup="dialog"><span class="news-badge">NOVIDADES</span><span>Kupotube 0.3.6 · Correções e melhorias para o seu Kupo.</span><span class="news-link">Ver o que mudou <img src="/icons/arrow-up-right.svg" alt=""></span></button>
   <header><a class="brand" href="/" aria-label="Kupotube início"><span class="logo"><img src="/icons/youtube-logo.svg" alt=""></span> kupotube<span class="dot">.</span></a><div class="header-actions"><button id="check-update" type="button" class="update-check-button"><img src="/icons/arrows-clockwise.svg" alt=""><span id="check-update-label">Verificar atualizações</span><span class="update-dot" aria-hidden="true"></span></button><button id="sound" class="icon-button" type="button" aria-label="Som de conclusão" aria-pressed="true"><img src="/icons/speaker-high.svg" alt=""></button></div></header>
     <section id="update-banner" class="update-banner" hidden aria-live="polite"><div><strong id="update-title">Atualização disponível</strong><p id="update-detail">Melhorias prontas para o seu Kupotube.</p></div><button id="install-update" type="button">Atualizar e reiniciar</button></section>
   <main>
@@ -22,7 +22,7 @@
     <div class="platforms"><span>UM LINK. VÁRIAS POSSIBILIDADES.</span><div><b><img src="/icons/youtube-logo.svg" alt=""> YouTube</b><b><img src="/icons/tiktok-logo.svg" alt=""> TikTok</b><b><img src="/icons/pinterest-logo.svg" alt=""> Pinterest</b><b><img src="/icons/instagram-logo.svg" alt=""> Instagram</b></div></div>
     <section class="steps" aria-label="Como funciona"><article><span>01 /</span><h3>Copie o link</h3><p>Encontrou aquele vídeo? Copie o link de compartilhamento.</p></article><article><span>02 /</span><h3>Do seu jeito</h3><p>Escolha entre as qualidades disponíveis, até 4K e além.</p></article><article><span>03 /</span><h3>Leve com você</h3><p>Um clique para baixar. Simples assim, sempre com você.</p></article></section>
   </main>
-  <footer><span class="maker-credit">Made by romllr &lt;3</span><p>Baixe apenas conteúdos seus ou que você tem autorização para salvar.<br>A disponibilidade depende de cada plataforma.</p><span class="version-area"><span id="app-version">v0.3.5</span></span></footer>
+  <footer><span class="maker-credit">Made by romllr &lt;3</span><p>Baixe apenas conteúdos seus ou que você tem autorização para salvar.<br>A disponibilidade depende de cada plataforma.</p><span class="version-area"><span id="app-version">v0.3.6</span></span></footer>
 <dialog id="selection-dialog" class="update-dialog selection-dialog" aria-labelledby="selection-title" aria-describedby="selection-description">
   <form method="dialog"><button class="icon-button dialog-close" aria-label="Cancelar seleção"><img src="/icons/x.svg" alt=""></button></form>
   <span class="dialog-eyebrow">DO SEU JEITO</span>
@@ -30,7 +30,7 @@
   <p id="selection-description">Escolha o que você quer salvar. Você pode mudar o trecho antes de baixar.</p>
   <form id="selection-form">
     <div class="selection-options"><label><input type="radio" name="selection-mode" value="full" checked><span><strong>Vídeo inteiro</strong><small>Do começo ao fim.</small></span></label><label><input type="radio" name="selection-mode" value="clip"><span><strong>Selecionar trecho</strong><small>Defina onde começa e termina.</small></span></label></div>
-    <div id="clip-fields" hidden><div class="clip-times"><div><label for="clip-start">Início</label><input id="clip-start" type="text" placeholder="mm:ss" inputmode="text" autocomplete="off" aria-describedby="clip-hint selection-error"></div><div><label for="clip-end">Fim</label><input id="clip-end" type="text" placeholder="mm:ss" inputmode="text" autocomplete="off" aria-describedby="clip-hint selection-error"></div></div><p id="clip-hint">Use mm:ss ou hh:mm:ss. O recorte preciso pode levar mais tempo e também vale para MP3.</p></div>
+    <div id="clip-fields" hidden><div class="clip-times"><div><label for="clip-start">Início</label><input id="clip-start" type="text" placeholder="mm:ss" inputmode="text" autocomplete="off" aria-describedby="clip-hint selection-error"></div><div><label for="clip-end">Fim</label><input id="clip-end" type="text" placeholder="mm:ss" inputmode="text" autocomplete="off" aria-describedby="clip-hint selection-error"></div></div><div class="clip-format"><label for="clip-format">Formato do trecho</label><select id="clip-format"><option value="mp4">MP4 · vídeo e áudio</option><option value="mkv">MKV · vídeo e áudio</option><option value="webm">WebM · vídeo e áudio</option><option value="mp3">MP3 · somente áudio</option></select></div><p id="clip-hint">Use mm:ss ou hh:mm:ss. O recorte preciso pode levar mais tempo e também vale para MP3.</p></div>
     <p id="selection-error" role="alert"></p>
     <button class="dialog-confirm" type="submit">Continuar</button>
   </form>
@@ -41,10 +41,11 @@
   <h2 id="releases-title">Cada versão, um pouco melhor.</h2>
   <p id="releases-description">Clique em uma versão para conhecer as mudanças. Este histórico acompanha a versão instalada.</p>
   <div class="release-list">
-    <details open><summary><span>v0.3.5 <b>MAIS RECENTE</b></span><span>Inteiro ou só um trecho</span></summary><ul><li>Escolha entre o vídeo inteiro e um trecho ao colar ou buscar um link.</li><li>Defina início e fim em mm:ss ou hh:mm:ss, com validação da duração.</li><li>Recorte preciso de vídeo e áudio MP3; altere o trecho antes de baixar.</li><li>Botão Como fazer isso? em rosa Macchiato.</li></ul></details>
-    <details><summary><span>v0.3.4</span><span>Mais espaço, do seu jeito</span></summary><ul><li>Layout ocupa toda a largura e se adapta ao redimensionar a janela.</li><li>Novos título e subtítulo: Baixador de vídeos. Simples, rápido e fácil.</li><li>Faixa de novidades e histórico de atualizações dentro do app.</li><li>YouTube incluído na ajuda de login e no tutorial de cookies.</li></ul></details>
-    <details><summary><span>v0.3.3</span><span>Mais identidade para o Kupo</span></summary><ul><li>Barra da janela e rolagem com as cores Macchiato.</li><li>Animação do botão Buscar vídeo corrigida.</li><li>Crédito Made by romllr &lt;3 em rosa no rodapé.</li><li>Tutorial para exportar cookies Netscape e importar sua sessão.</li></ul></details>
-    <details><summary><span>v0.3.2</span><span>Atualização com reinício corrigido</span></summary><ul><li>Correção da espera pelo encerramento do app durante a atualização.</li><li>O app só fecha depois que o instalador confirma que iniciou.</li><li>Arquivos temporários ficam em AppData, com limpeza e mensagens de erro.</li></ul></details>
+    <details open><summary><span>v0.3.6 <b>MAIS RECENTE</b></span><span>Correções no download de trechos</span></summary><ul><li>Correções para preservar vídeo e áudio nos trechos em MP4, MKV e WebM.</li><li>Escolha explícita do formato do trecho; MP3 identificado como somente áudio.</li><li>Ajustes na UI.</li></ul></details>
+    <details><summary><span>v0.3.5</span><span>Download de trechos</span></summary><ul><li>Escolha entre baixar o vídeo inteiro ou um trecho com início e fim personalizados.</li><li>Validação dos tempos e suporte ao recorte de áudio MP3.</li><li>Ajustes na UI.</li></ul></details>
+    <details><summary><span>v0.3.4</span><span>Novidades dentro do app</span></summary><ul><li>Histórico de atualizações disponível dentro do aplicativo.</li><li>Ajustes na UI.</li></ul></details>
+    <details><summary><span>v0.3.3</span><span>Ajuda para importar sessão</span></summary><ul><li>Tutorial de cookies Netscape para importar a sessão local.</li><li>Ajustes na UI.</li></ul></details>
+    <details><summary><span>v0.3.2</span><span>Atualização com reinício corrigido</span></summary><ul><li>Correções no encerramento, instalação e reinício durante a atualização.</li><li>Arquivos temporários em AppData com limpeza e mensagens de erro.</li></ul></details>
   </div>
   <form method="dialog"><button class="dialog-confirm" autofocus>Continuar baixando</button></form>
 </dialog>

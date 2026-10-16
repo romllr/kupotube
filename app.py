@@ -164,6 +164,14 @@ def prepare_download(body: Download, progress=None, directory=None):
                 return [{'start_time': body.start_time, 'end_time': body.end_time}]
             opts['download_ranges'] = ranges
             opts['force_keyframes_at_cuts'] = True
+            if body.container != 'mp3':
+                # Pin codecs/muxer: FFmpeg's inferred intermediate container may
+                # otherwise choose a video codec unsupported by the Windows player.
+                codec_args = (['-c:v', 'libvpx-vp9', '-c:a', 'libopus', '-f', 'webm']
+                              if body.container == 'webm' else
+                              ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+                               '-f', 'matroska' if body.container == 'mkv' else 'mp4'])
+                opts['external_downloader_args'] = {'ffmpeg_o': codec_args}
         if progress:
             def hook(data):
                 total = data.get('total_bytes') or data.get('total_bytes_estimate')

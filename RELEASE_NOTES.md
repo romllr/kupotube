@@ -1,7 +1,5 @@
-Kupotube 0.3.5
+Kupotube 0.3.6
 
-- Escolha vídeo inteiro ou um trecho ao colar ou buscar um link.
-- Início e fim personalizáveis em mm:ss ou hh:mm:ss, sem intervalo predefinido.
-- Validação dos tempos e da duração; opção de alterar o trecho antes do download.
-- Recorte preciso com FFmpeg também disponível em MP3. Recortar pode exigir mais tempo de processamento.
-- Botão Como fazer isso? em rosa Macchiato.
+- Correções para preservar vídeo e áudio nos trechos em MP4, MKV e WebM.
+- Escolha explícita do formato do trecho; MP3 identificado como somente áudio.
+- Ajustes na UI.
