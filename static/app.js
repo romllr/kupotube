@@ -228,3 +228,12 @@ $('#install-update').addEventListener('click', async () => {
   } catch (error) { message(error.message, true); }
   finally { setBusy(false); $('#install-update').disabled = false; }
 });
+
+const cookiesDialog = $('#cookies-dialog');
+$('#cookies-help').addEventListener('click', () => { if (!cookiesDialog.open) cookiesDialog.showModal(); });
+cookiesDialog.addEventListener('close', () => $('#cookies-help').focus());
+cookiesDialog.addEventListener('click', event => {
+  if (event.target !== cookiesDialog) return;
+  const bounds = cookiesDialog.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) cookiesDialog.close();
+});

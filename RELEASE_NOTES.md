@@ -1,9 +1,9 @@
-Kupotube 0.3.2
+Kupotube 0.3.3
 
-- Corrigida a espera pelo processo do atualizador: aguarda o app, não o processo pai que pode permanecer aberto.
-- O app só fecha após o instalador confirmar que iniciou e verificou a cópia da atualização.
-- Arquivos de atualização ficam em AppData, sem criar pasta ao lado do executável.
-- Limpeza com tentativas adicionais e mensagens de erro para evitar falhas silenciosas.
-- Teste Windows de atualização e reinício com um executável PyInstaller empacotado.
+- Barra nativa da janela em Macchiato no Windows 11; modo escuro no Windows 10 compatível.
+- Rolagem no tema do app.
+- Hover do botão Buscar vídeo sem deslocamento e troca brusca de fundo.
+- Crédito Made by romllr <3 em rosa Macchiato no rodapé.
+- Tutorial Como fazer isso? para exportar cookies Netscape e importar uma sessão local.
 
-Como o atualizador antigo pode falhar antes de instalar esta correção, baixe esta versão manualmente se necessário.
+O download de músicas completas do Spotify não é suportado pelo yt-dlp e não foi adicionado.

@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from settings import cookie_path, get_preferences, set_sound
 import updater
 from version import VERSION
+from window_theme import apply_window_theme
 import socket
 import threading
 import time
@@ -196,6 +197,7 @@ def main():
             'Kupotube', address, js_api=api, width=1080, height=900,
             min_size=(580, 650), background_color='#24273a',
         )
+        api._window.events.shown += lambda: apply_window_theme(api._window)
         webview.start(gui='edgechromium', debug=False, icon=str(Path(__file__).parent / 'static' / 'kupotube.ico'))
     finally:
         server.should_exit = True
