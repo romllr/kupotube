@@ -143,3 +143,68 @@ def test_tiktok_prefers_unwatermarked_formats():
         # Still works if only the watermarked variant is available.
         fallback=list(selector({'formats':formats[1:],'has_merged_format':True,'incomplete_formats':False}))
         assert fallback[0]['format_id'] == 'marked'
+
+
+def test_invalid_clip_ranges():
+    for values in [{'start_time': 1}, {'end_time': 2}, {'start_time': -1, 'end_time': 2},
+                   {'start_time': 2, 'end_time': 2}, {'start_time': 5, 'end_time': 2},
+                   {'start_time': 'NaN', 'end_time': 2}, {'start_time': 0, 'end_time': 'Infinity'}]:
+        assert client.post('/api/download', json={'url':'https://youtu.be/example', **values}).status_code == 422
+
+
+@patch('app.validate_url', side_effect=lambda value: value)
+@patch('app.yt_dlp.YoutubeDL')
+def test_clip_checks_duration_and_configures_precise_cut(downloader, validate):
+    from fastapi import HTTPException
+    import pytest
+    def extract(url, download):
+        opts = downloader.call_args.args[0]
+        ranges = opts['download_ranges']
+        assert ranges({'duration': 100}, None) == [{'start_time': 7, 'end_time': 19}]
+        for info in [{'duration': 10}, {'is_live': True}]:
+            with pytest.raises(HTTPException):
+                ranges(info, None)
+        assert opts['force_keyframes_at_cuts'] is True
+        Path(opts['outtmpl'].replace('%(ext)s', 'mp4')).write_bytes(b'clip')
+        return {'title':'Clip'}
+    downloader.return_value.__enter__.return_value.extract_info.side_effect = extract
+    response = client.post('/api/download', json={'url':'https://youtu.be/example', 'start_time':7, 'end_time':19})
+    assert response.status_code == 200
+    assert response.content == b'clip'
+
+
+def test_real_ffmpeg_clip(tmp_path):
+    """Exercise yt-dlp ranges and actual FFmpeg output against a local video."""
+    import functools
+    import http.server
+    import json
+    import shutil
+    import subprocess
+    import threading
+    import pytest
+    from app import Download, prepare_download
+    import asyncio
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        pytest.skip('Requires local FFmpeg and ffprobe')
+    source = tmp_path / 'source.mp4'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=160x90:rate=24',
+                    '-f','lavfi','-i','sine=frequency=440','-t','6','-c:v','libx264','-c:a','aac','-movflags','+faststart',str(source)],check=True)
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(('127.0.0.1',0), handler)
+    threading.Thread(target=server.serve_forever,daemon=True).start()
+    try:
+        for extension in ['mp4', 'mp3']:
+            with patch('app.validate_url',side_effect=lambda value:value):
+                response = prepare_download(Download(url=f'http://127.0.0.1:{server.server_port}/source.mp4',
+                                                     container=extension,start_time=1,end_time=3))
+            try:
+                probe = subprocess.run(['ffprobe','-v','error','-show_format','-show_streams','-of','json',str(response.path)],check=True,capture_output=True,text=True)
+                data = json.loads(probe.stdout)
+                assert abs(float(data['format']['duration']) - 2) < .2
+                assert any(stream['codec_type'] == 'audio' for stream in data['streams'])
+                assert any(stream['codec_type'] == 'video' for stream in data['streams']) == (extension == 'mp4')
+            finally:
+                asyncio.run(response.background())
+    finally:
+        server.shutdown()
+        server.server_close()

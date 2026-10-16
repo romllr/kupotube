@@ -96,3 +96,15 @@ def test_sound_preferences_survive_new_api_instance(tmp_path):
     with patch('settings.data_dir', return_value=tmp_path):
         assert DesktopAPI().set_sound_enabled(False) == {'saved': True}
         assert DesktopAPI().get_preferences()['sound'] is False
+
+
+def test_native_forwards_selected_times(tmp_path):
+    api = DesktopAPI()
+    api._window = Mock()
+    api._window.create_file_dialog.return_value = [str(tmp_path / 'clip.mp4')]
+    with patch('desktop.threading.Thread') as thread:
+        assert api.start_download('https://youtu.be/example',720,'mp4','Clip',7,19) == {'started':True}
+    body, destination = thread.call_args.kwargs['args']
+    assert body.start_time == 7 and body.end_time == 19
+    assert destination == tmp_path / 'clip.mp4'
+    thread.return_value.start.assert_called_once()

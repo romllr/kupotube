@@ -3,11 +3,12 @@ const form = $('#form'), url = $('#url'), result = $('#result'), status = $('#st
 const analyze = $('#analyze'), download = $('#download'), quality = $('#quality'), container = $('#container');
 const progress = $('#progress'), progressBar = $('#progress-bar'), progressLabel = $('#progress-label');
 let selectedUrl = '', videoTitle = '', busy = false, audioContext, toastTimer;
+let chosenLink = '', selectedRange = null, videoDuration = null, selectionTrigger = url;
 let soundEnabled = localStorage.getItem('kupotube-sound') !== 'off';
 function message(text, error = false) { status.textContent = text; status.classList.toggle('error', error); }
 function setBusy(value) {
   busy = value;
-  for (const element of [analyze, download, url, quality, container, $('#import-session'), $('#remove-session')]) element.disabled = value;
+  for (const element of [analyze, download, url, quality, container, $('#import-session'), $('#remove-session'), $('#edit-selection')]) element.disabled = value;
   quality.disabled = value || container.value === 'mp3';
 }
 function updateSound() {
@@ -52,7 +53,7 @@ function showProgress(data) {
   const meter = $('#progress-meter');
   if (known) meter.setAttribute('aria-valuenow', String(Math.round(data.percent)));
   else meter.removeAttribute('aria-valuenow');
-  const labels = {choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: container.value === 'mp3' ? 'Convertendo áudio para MP3' : 'Juntando áudio e vídeo / ajustando formato', saving: 'Salvando arquivo', complete: 'Download concluído'};
+  const labels = {choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: container.value === 'mp3' ? 'Convertendo áudio para MP3' : (selectedRange ? 'Recortando o trecho / ajustando formato' : 'Juntando áudio e vídeo / ajustando formato'), saving: 'Salvando arquivo', complete: 'Download concluído'};
   progressLabel.textContent = data.state === 'downloading' ? `Baixando ${data.track === 'Áudio' ? 'áudio' : 'vídeo'}` : (labels[data.state] || 'Preparando');
   $('#progress-value').textContent = known ? `${data.estimated ? '≈ ' : ''}${Math.floor(data.percent)}%` : '…';
   const details = [];
@@ -69,15 +70,67 @@ async function request(path, body) {
   }
   return response;
 }
-url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; message(''); });
+const selectionDialog = $('#selection-dialog');
+function parseTimestamp(text) {
+  const value = text.trim();
+  if (!/^\d+:([0-5]\d)(:([0-5]\d))?$/.test(value)) throw new Error('Use mm:ss ou hh:mm:ss em ambos os campos.');
+  return value.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+}
+function formatTimestamp(seconds) {
+  const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds / 60) % 60;
+  return `${hours ? hours + ':' + String(minutes).padStart(2, '0') : Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+function validateRange(range) {
+  if (!range) return;
+  if (!Number.isSafeInteger(range.start_time) || !Number.isSafeInteger(range.end_time) || range.end_time <= range.start_time) throw new Error('O fim do trecho precisa ser maior que o início.');
+  if (Number.isFinite(videoDuration) && (range.start_time >= videoDuration || range.end_time > videoDuration)) throw new Error(`O trecho deve ficar dentro da duração do vídeo (${formatTimestamp(videoDuration)}).`);
+}
+function showSelection(trigger = url) {
+  if (busy || selectionDialog.open) return;
+  selectionTrigger = trigger;
+  $('#selection-error').textContent = '';
+  $(`input[name="selection-mode"][value="${selectedRange ? 'clip' : 'full'}"]`).checked = true;
+  $('#clip-fields').hidden = !selectedRange;
+  $('#clip-start').value = selectedRange ? formatTimestamp(selectedRange.start_time) : '';
+  $('#clip-end').value = selectedRange ? formatTimestamp(selectedRange.end_time) : '';
+  selectionDialog.showModal();
+}
+$('#selection-form').addEventListener('change', event => {
+  if (event.target.name === 'selection-mode') {
+    $('#clip-fields').hidden = event.target.value !== 'clip';
+    $('#selection-error').textContent = '';
+    if (event.target.value === 'clip') $('#clip-start').focus();
+  }
+});
+$('#selection-form').addEventListener('submit', event => {
+  event.preventDefault();
+  try {
+    const range = $('input[name="selection-mode"]:checked').value === 'clip' ? {start_time: parseTimestamp($('#clip-start').value), end_time: parseTimestamp($('#clip-end').value)} : null;
+    validateRange(range);
+    selectedRange = range; chosenLink = url.value.trim();
+    $('#selection-label').textContent = range ? `Trecho · ${formatTimestamp(range.start_time)} → ${formatTimestamp(range.end_time)}` : 'Vídeo inteiro';
+    selectionDialog.close();
+    if (selectedUrl !== chosenLink) form.requestSubmit();
+    else message('');
+  } catch (error) { $('#selection-error').textContent = error.message; }
+});
+selectionDialog.addEventListener('close', () => selectionTrigger.focus());
+$('#edit-selection').addEventListener('click', () => showSelection($('#edit-selection')));
+url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; message(''); });
+url.addEventListener('paste', event => {
+  const pasted = event.clipboardData?.getData('text')?.trim();
+  if (!pasted) return;
+  setTimeout(() => { if (!busy && url.value.trim() && url.validity.valid) showSelection(); }, 0);
+});
 form.addEventListener('submit', async event => {
   event.preventDefault(); if (busy) return;
+  if (chosenLink !== url.value.trim()) { showSelection(analyze); return; }
   setBusy(true); result.hidden = true; progress.hidden = true;
   message('Buscando o vídeo e as qualidades disponíveis…');
   try {
     const link = url.value.trim();
     const data = await (await request('/api/info', {url: link})).json();
-    selectedUrl = link; videoTitle = data.title;
+    selectedUrl = link; videoTitle = data.title; videoDuration = Number.isFinite(data.duration) ? data.duration : null;
     $('#title').textContent = data.title;
     $('#meta').textContent = [data.uploader, data.duration ? `${Math.floor(data.duration / 60)}:${String(Math.floor(data.duration % 60)).padStart(2, '0')}` : ''].filter(Boolean).join(' · ');
     quality.replaceChildren(...data.qualities.map(height => {
@@ -88,7 +141,8 @@ form.addEventListener('submit', async event => {
     if (!data.qualities.length) {
       const original = document.createElement('option'); original.value = 4320; original.textContent = 'Original · resolução não informada'; quality.append(original);
     } else { quality.value = data.qualities.find(h => h <= 1080) || data.qualities[0]; }
-    result.hidden = false; message('');
+    result.hidden = false;
+    try { validateRange(selectedRange); message(''); } catch (error) { message(error.message + ' Clique em Alterar trecho.', true); }
   } catch (error) { message(error.message, true); }
   finally { setBusy(false); }
 });
@@ -103,12 +157,13 @@ async function followDownload() {
 }
 download.addEventListener('click', async () => {
   if (!selectedUrl || busy) return;
+  try { validateRange(selectedRange); } catch (error) { message(error.message, true); showSelection($('#edit-selection')); return; }
   prepareAudio(); setBusy(true); message('');
   showProgress({state: 'preparing', percent: null});
   progress.scrollIntoView({behavior: 'smooth', block: 'nearest'});
   try {
     if (window.pywebview?.api) {
-      const outcome = await window.pywebview.api.start_download(selectedUrl, Number(quality.value), container.value, videoTitle);
+      const outcome = await window.pywebview.api.start_download(selectedUrl, Number(quality.value), container.value, videoTitle, selectedRange?.start_time ?? null, selectedRange?.end_time ?? null);
       if (outcome.error) throw new Error(outcome.error);
       if (outcome.cancelled) { progress.hidden = true; message('Salvamento cancelado.'); return; }
       const completed = await followDownload();
@@ -117,7 +172,7 @@ download.addEventListener('click', async () => {
       return;
     }
     message('Preparando o vídeo. O progresso detalhado está disponível no aplicativo Windows.');
-    const response = await request('/api/download', {url: selectedUrl, quality: Number(quality.value), container: container.value});
+    const response = await request('/api/download', {url: selectedUrl, quality: Number(quality.value), container: container.value, ...(selectedRange || {})});
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = objectUrl;
     const disposition = response.headers.get('Content-Disposition') || '';

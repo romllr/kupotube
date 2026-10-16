@@ -35,14 +35,14 @@ class DesktopAPI:
         with self._lock:
             self._state = state
 
-    def start_download(self, url, quality, container='mp4', title='video'):
+    def start_download(self, url, quality, container='mp4', title='video', start_time=None, end_time=None):
         with self._lock:
             if self._active:
                 return {'error': 'Já existe um download em andamento.'}
             self._active = True
             self._state = {'state': 'choosing', 'percent': None}
         try:
-            body = Download(url=url, quality=quality, container=container)
+            body = Download(url=url, quality=quality, container=container, start_time=start_time, end_time=end_time)
             name = yt_dlp.utils.sanitize_filename(title or 'video', restricted=True)[:120]
             target = self._window.create_file_dialog(
                 webview.FileDialog.SAVE, save_filename=f'{name}.{container}',

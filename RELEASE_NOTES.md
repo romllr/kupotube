@@ -1,7 +1,7 @@
-Kupotube 0.3.4
+Kupotube 0.3.5
 
-- Layout responsivo ocupa toda a largura e acompanha o redimensionamento da janela.
-- Título Baixador de vídeos, subtítulo Simples, rápido e fácil. e destaque Download em segundos.
-- Removido o texto Seu próximo vídeo favorito. Offline.
-- YouTube incluído na ajuda de login e no tutorial de cookies.
-- Faixa de novidades com popup e histórico navegável das versões 0.3.4, 0.3.3 e 0.3.2.
+- Escolha vídeo inteiro ou um trecho ao colar ou buscar um link.
+- Início e fim personalizáveis em mm:ss ou hh:mm:ss, sem intervalo predefinido.
+- Validação dos tempos e da duração; opção de alterar o trecho antes do download.
+- Recorte preciso com FFmpeg também disponível em MP3. Recortar pode exigir mais tempo de processamento.
+- Botão Como fazer isso? em rosa Macchiato.

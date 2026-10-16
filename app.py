@@ -12,7 +12,7 @@ import yt_dlp
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from starlette.background import BackgroundTask
 
 ROOT = Path(__file__).parent
@@ -27,6 +27,16 @@ class Request(BaseModel):
 class Download(Request):
     quality: int = Field(default=1080, ge=144, le=4320)
     container: Literal['mp4', 'mkv', 'webm', 'mp3'] = 'mp4'
+    start_time: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    end_time: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+    @model_validator(mode='after')
+    def valid_interval(self):
+        if (self.start_time is None) != (self.end_time is None):
+            raise ValueError('Informe o início e o fim do trecho.')
+        if self.start_time is not None and self.end_time <= self.start_time:
+            raise ValueError('O fim deve ser maior que o início.')
+        return self
 
 
 def validate_url(url):
@@ -127,7 +137,7 @@ def prepare_download(body: Download, progress=None, directory=None):
     url = validate_url(body.url)
     folder = tempfile.TemporaryDirectory(prefix="kupotube-", dir=directory)
     try:
-        # Remux only: never silently transcode a large video on the user's CPU.
+        # Whole videos are remuxed; selected ranges use precise FFmpeg cuts.
         video_filter = '[ext=webm]' if body.container == 'webm' else ''
         audio_filter = '[ext=webm]' if body.container == 'webm' else ''
         opts = options() | {"outtmpl": str(Path(folder.name) / "video.%(ext)s"),
@@ -144,6 +154,16 @@ def prepare_download(body: Download, progress=None, directory=None):
             base = opts['format']
             clean = base.replace('[height<=?', '[format_note!*=watermarked][height<=?')
             opts['format'] = clean + '/' + base
+        if body.start_time is not None:
+            def ranges(info, _downloader):
+                duration = info.get('duration')
+                if info.get('is_live'):
+                    raise HTTPException(422, 'Escolha um vídeo já publicado para baixar um trecho.')
+                if duration is not None and (body.start_time >= duration or body.end_time > duration):
+                    raise HTTPException(422, 'O trecho deve ficar dentro da duração do vídeo.')
+                return [{'start_time': body.start_time, 'end_time': body.end_time}]
+            opts['download_ranges'] = ranges
+            opts['force_keyframes_at_cuts'] = True
         if progress:
             def hook(data):
                 total = data.get('total_bytes') or data.get('total_bytes_estimate')

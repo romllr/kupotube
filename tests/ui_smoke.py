@@ -23,11 +23,11 @@ with sync_playwright() as p:
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.route('**/api/info', lambda route: route.fulfill(json={'title':'Vídeo de teste','uploader':'Kupotube','duration':93,'qualities':[2160,1080,720]}))
     page.add_init_script('''window.pywebview = {api: {
-      start_download: async (url, quality, format) => { window.polls = 0; window.lastFormat = format; return {started: true}; },
+      start_download: async (url, quality, format, title, start, end) => { window.lastRange = [start,end]; window.polls = 0; window.lastFormat = format; return {started: true}; },
       check_update: async () => {
         await new Promise(resolve => setTimeout(resolve,100));
-        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.4'};
-        return {available:window.updateMode !== 'latest',current:'0.3.4',version:'99.0.0'};
+        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.5'};
+        return {available:window.updateMode !== 'latest',current:'0.3.5',version:'99.0.0'};
       },
       install_update: async () => ({started:true}),
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
@@ -52,13 +52,14 @@ with sync_playwright() as p:
     assert page.locator('.header-note').count() == 0
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
-    assert page.locator('.release-list details').count() == 3
+    assert page.locator('.release-list details').count() == 4
     assert page.locator('.release-list details').first.get_attribute('open') is not None
     page.locator('.release-list summary').nth(1).click()
     expect(page.locator('.release-list details').nth(1).locator('ul')).to_be_visible()
-    assert 'Buscar vídeo' in page.locator('.release-list details').nth(1).inner_text()
+    assert 'Layout' in page.locator('.release-list details').nth(1).inner_text()
     page.keyboard.press('Escape')
     expect(page.locator('#release-news')).to_be_focused()
+    assert page.locator('#cookies-help').evaluate('e => getComputedStyle(e).color') == 'rgb(245, 189, 230)'
     button = page.locator('#analyze')
     original_box = button.bounding_box()
     original_background = button.evaluate('e => getComputedStyle(e).backgroundImage')
@@ -82,8 +83,28 @@ with sync_playwright() as p:
     assert not page.locator('#update-dialog').is_visible()
     assert page.locator('#check-update').bounding_box()['y'] < 150
     page.fill('#url','https://youtu.be/example')
+    page.locator('#url').evaluate("e => {const data = new DataTransfer(); data.setData('text','https://youtu.be/example'); e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true}));}")
+    expect(page.locator('#selection-dialog')).to_be_visible()
+    assert page.locator('#clip-start').input_value() == ''
+    assert page.locator('#clip-end').input_value() == ''
+    page.keyboard.press('Escape')
     page.click('#analyze')
+    expect(page.locator('#selection-dialog')).to_be_visible()
+    page.check('input[name="selection-mode"][value="clip"]')
+    page.fill('#clip-start','00:07')
+    page.fill('#clip-end','00:03')
+    page.locator('#selection-form button[type="submit"]').click()
+    expect(page.locator('#selection-error')).to_contain_text('maior')
+    page.fill('#clip-end','00:19')
+    page.locator('#selection-form button[type="submit"]').click()
     page.wait_for_selector('#result',state='visible')
+    assert page.locator('#selection-label').inner_text() == 'Trecho · 0:07 → 0:19'
+    page.click('#edit-selection')
+    page.fill('#clip-end','02:00')
+    page.locator('#selection-form button[type="submit"]').click()
+    expect(page.locator('#selection-error')).to_contain_text('duração')
+    page.fill('#clip-end','00:19')
+    page.locator('#selection-form button[type="submit"]').click()
     assert page.locator('#quality option').count()==3
     assert page.locator('#update-banner').is_visible()
     assert page.locator('#container').evaluate("e => getComputedStyle(e).appearance") == 'none'
@@ -91,6 +112,7 @@ with sync_playwright() as p:
     page.click('#download')
     page.wait_for_function("document.querySelector('#progress-value').textContent === '42%'")
     assert page.locator('#download').is_disabled()
+    assert page.evaluate('window.lastRange') == [7,19]
     assert page.locator('#progress-bar').evaluate("e => getComputedStyle(e).backgroundColor") == 'rgb(166, 218, 149)'
     page.wait_for_selector('#toast',state='visible')
     assert page.locator('#progress-value').inner_text()=='100%'
@@ -98,12 +120,17 @@ with sync_playwright() as p:
     assert page.locator('#download').is_enabled()
     page.click('#toast-close')
     assert page.locator('#toast').is_hidden()
+    page.click('#edit-selection')
+    page.check('input[name="selection-mode"][value="full"]')
+    page.locator('#selection-form button[type="submit"]').click()
+    assert page.locator('#selection-label').inner_text() == 'Vídeo inteiro'
     page.select_option('#container','mp3')
     assert page.locator('#quality-field').is_hidden()
     assert page.locator('#download-label').inner_text() == 'Baixar MP3'
     page.click('#download')
     page.wait_for_function("document.querySelector('#toast-text').textContent === 'Meu áudio.mp3'")
     assert page.evaluate('window.lastFormat') == 'mp3'
+    assert page.evaluate('window.lastRange') == [None,None]
     page.click('#install-update')
     page.wait_for_function("document.querySelector('#status').textContent === 'Falha de atualização simulada'")
     assert page.locator('#download').is_enabled()
@@ -111,7 +138,7 @@ with sync_playwright() as p:
     page.click('#check-update')
     page.wait_for_selector('#update-dialog[open]')
     assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
-    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.4'
+    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.5'
     expect(page.locator('#update-dialog-confirm')).to_be_focused()
     assert page.locator('#update-banner').is_hidden()
     page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None
@@ -149,6 +176,10 @@ with sync_playwright() as p:
         page.set_viewport_size({'width':width,'height':height})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), width
         assert abs(page.locator('main').bounding_box()['width'] - page.evaluate('document.documentElement.clientWidth')) < 1
+        page.click('#edit-selection')
+        expect(page.locator('#selection-dialog')).to_be_visible()
+        assert page.locator('#selection-dialog').bounding_box()['height'] <= height - 39
+        page.keyboard.press('Escape')
         page.click('#release-news')
         dialog = page.locator('#releases-dialog')
         expect(dialog).to_be_visible()
