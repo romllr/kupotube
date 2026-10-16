@@ -26,8 +26,8 @@ with sync_playwright() as p:
       start_download: async (url, quality, format, title, start, end) => { window.lastRange = [start,end]; window.polls = 0; window.lastFormat = format; return {started: true}; },
       check_update: async () => {
         await new Promise(resolve => setTimeout(resolve,100));
-        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.6'};
-        return {available:window.updateMode !== 'latest',current:'0.3.6',version:'99.0.0'};
+        if (window.updateMode === 'error') return {error:'Sem conexão de teste',current:'0.3.7'};
+        return {available:window.updateMode !== 'latest',current:'0.3.7',version:'99.0.0'};
       },
       install_update: async () => ({started:true}),
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
@@ -55,7 +55,7 @@ with sync_playwright() as p:
     assert page.locator('.header-note').count() == 0
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
-    assert page.locator('.release-list details').count() == 5
+    assert page.locator('.release-list details').count() == 6
     assert page.locator('.release-list details').first.get_attribute('open') is not None
     page.locator('.release-list summary').nth(1).click()
     expect(page.locator('.release-list details').nth(1).locator('ul')).to_be_visible()
@@ -144,7 +144,7 @@ with sync_playwright() as p:
     page.click('#check-update')
     page.wait_for_selector('#update-dialog[open]')
     assert page.locator('#update-dialog-title').inner_text() == 'O Kupo já está atualizado!'
-    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.6'
+    assert page.locator('#update-dialog-version').inner_text() == 'VERSÃO 0.3.7'
     expect(page.locator('#update-dialog-confirm')).to_be_focused()
     assert page.locator('#update-banner').is_hidden()
     page.screenshot(path=os.environ.get('KUPOTUBE_MODAL_SCREENSHOT','/tmp/kupotube-update-modal.png')) if sys.platform != 'win32' else None

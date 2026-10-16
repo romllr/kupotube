@@ -154,21 +154,23 @@ def test_invalid_clip_ranges():
 
 @patch('app.validate_url', side_effect=lambda value: value)
 @patch('app.yt_dlp.YoutubeDL')
-def test_clip_checks_duration_and_configures_precise_cut(downloader, validate):
+def test_clip_checks_duration_and_uses_local_cut(downloader, validate):
     from fastapi import HTTPException
     import pytest
     def extract(url, download):
         opts = downloader.call_args.args[0]
-        ranges = opts['download_ranges']
-        assert ranges({'duration': 100}, None) == [{'start_time': 7, 'end_time': 19}]
+        assert 'download_ranges' not in opts
+        check = opts['match_filter']
+        assert check({'duration':100}) is None
         for info in [{'duration': 10}, {'is_live': True}]:
             with pytest.raises(HTTPException):
-                ranges(info, None)
-        assert opts['force_keyframes_at_cuts'] is True
+                check(info)
+        assert 'force_keyframes_at_cuts' not in opts
         Path(opts['outtmpl'].replace('%(ext)s', 'mp4')).write_bytes(b'clip')
         return {'title':'Clip'}
     downloader.return_value.__enter__.return_value.extract_info.side_effect = extract
-    response = client.post('/api/download', json={'url':'https://youtu.be/example', 'start_time':7, 'end_time':19})
+    with patch('app.cut_clip', side_effect=lambda source, target, *args: target.write_bytes(b'clip')):
+        response = client.post('/api/download', json={'url':'https://youtu.be/example', 'start_time':7, 'end_time':19})
     assert response.status_code == 200
     assert response.content == b'clip'
 
@@ -195,37 +197,7 @@ def test_real_ffmpeg_clip(tmp_path):
         ('video.webm',['-an','-c:v','libvpx-vp9']),
         ('audio.webm',['-vn','-c:a','libopus'])]:
         subprocess.run(['ffmpeg','-v','error','-i',str(source),*args,str(tmp_path / filename)],check=True)
-    class RangeHandler(http.server.SimpleHTTPRequestHandler):
-        # FFmpeg seeks in remote video streams; implement real HTTP range support.
-        def send_head(self):
-            path = Path(self.translate_path(self.path))
-            if not path.is_file():
-                return super().send_head()
-            size = path.stat().st_size
-            bounds = self.headers.get('Range', '').removeprefix('bytes=').split('-')
-            start = int(bounds[0]) if len(bounds) == 2 and bounds[0] else 0
-            end = min(int(bounds[1]),size-1) if len(bounds) == 2 and bounds[1] else size-1
-            self.remaining = end - start + 1
-            self.send_response(206 if 'Range' in self.headers else 200)
-            self.send_header('Content-Type',self.guess_type(str(path)))
-            self.send_header('Accept-Ranges','bytes')
-            self.send_header('Content-Length',str(self.remaining))
-            if 'Range' in self.headers:
-                self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
-            self.end_headers()
-            source = path.open('rb'); source.seek(start)
-            return source
-        def copyfile(self, source, output):
-            try:
-                while self.remaining > 0:
-                    data = source.read(min(65536,self.remaining))
-                    if not data: break
-                    output.write(data); self.remaining -= len(data)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
-        def log_message(self, *args):
-            pass
-    handler = functools.partial(RangeHandler, directory=str(tmp_path))
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
     server = http.server.ThreadingHTTPServer(('127.0.0.1',0), handler)
     threading.Thread(target=server.serve_forever,daemon=True).start()
     try:
@@ -241,6 +213,10 @@ def test_real_ffmpeg_clip(tmp_path):
                 assert any(stream['codec_type'] == 'video' for stream in data['streams']) == (extension != 'mp3')
             finally:
                 asyncio.run(response.background())
+        from media import cut_clip
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException, match='não salvará áudio como vídeo'):
+            cut_clip(tmp_path / 'audio.m4a', tmp_path / 'invalid.mp4', 1, 3, 'mp4')
         # Exercise the real yt-dlp merge path, not just a combined MP4 source.
         from yt_dlp.extractor.generic import GenericIE
         root = f'http://127.0.0.1:{server.server_port}'
@@ -264,3 +240,13 @@ def test_real_ffmpeg_clip(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_error_identifies_youtube_and_preserves_cause_without_media_urls():
+    from app import extraction_message
+    import yt_dlp
+    detail = extraction_message(yt_dlp.utils.DownloadError('Unexpected failure: https://media.example/video?token=secret'), 'https://youtu.be/example')
+    assert 'YouTube' in detail and 'Unexpected failure' in detail
+    assert 'secret' not in detail and 'media.example' not in detail
+    detail = extraction_message(yt_dlp.utils.DownloadError('ffmpeg exited with code 1'), 'https://youtube.com/watch?v=example')
+    assert 'FFmpeg' in detail and 'importar' not in detail

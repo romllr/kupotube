@@ -53,7 +53,7 @@ function showProgress(data) {
   const meter = $('#progress-meter');
   if (known) meter.setAttribute('aria-valuenow', String(Math.round(data.percent)));
   else meter.removeAttribute('aria-valuenow');
-  const labels = {choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: container.value === 'mp3' ? 'Convertendo áudio para MP3' : (selectedRange ? 'Recortando o trecho / ajustando formato' : 'Juntando áudio e vídeo / ajustando formato'), saving: 'Salvando arquivo', complete: 'Download concluído'};
+  const labels = {cutting: 'Recortando o arquivo baixado', choosing: 'Escolha onde salvar', preparing: 'Preparando o download', processing: container.value === 'mp3' ? 'Convertendo áudio para MP3' : (selectedRange ? 'Recortando o trecho / ajustando formato' : 'Juntando áudio e vídeo / ajustando formato'), saving: 'Salvando arquivo', complete: 'Download concluído'};
   progressLabel.textContent = data.state === 'downloading' ? `Baixando ${data.track === 'Áudio' ? 'áudio' : 'vídeo'}` : (labels[data.state] || 'Preparando');
   $('#progress-value').textContent = known ? `${data.estimated ? '≈ ' : ''}${Math.floor(data.percent)}%` : '…';
   const details = [];

@@ -1,12 +1,14 @@
 import ipaddress
 import os
 import socket
+import re
 import sys
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Literal
 from settings import cookie_path
+from media import cut_clip
 
 import yt_dlp
 from fastapi import FastAPI, HTTPException
@@ -91,9 +93,22 @@ def make_downloader(opts):
     return downloader
 
 
+def error_reason(error):
+    # Show the underlying failure without signed media URLs or session values.
+    detail = re.sub(r'\x1b\[[0-9;]*m', '', str(error))
+    detail = re.sub(r'https?://[^\s\]<>]+', '[endereço omitido]', detail)
+    detail = re.sub(r'(?i)(cookie|authorization|token|password)(?:s)?[=:][^\s]+', r'\1=[omitido]', detail)
+    return 'Motivo: ' + ' '.join(detail.split())[:350]
+
+
 def extraction_message(error, url):
     text = str(error).lower()
-    site = 'Instagram' if 'instagram.com' in urlsplit(url).netloc else ('TikTok' if 'tiktok.com' in urlsplit(url).netloc else 'plataforma')
+    host = (urlsplit(url).hostname or '').lower()
+    site = next((name for domain, name in [('youtube.com', 'YouTube'), ('youtu.be', 'YouTube'), ('tiktok.com', 'TikTok'), ('instagram.com', 'Instagram'), ('pinterest.com', 'Pinterest'), ('pin.it', 'Pinterest')] if host == domain or host.endswith('.' + domain)), 'plataforma')
+    if 'ffmpeg' in text or 'postprocessing' in text:
+        return 'O processamento do arquivo falhou no FFmpeg. Tente outro formato. ' + error_reason(error)
+    if any(word in text for word in ['timed out', 'timeout', 'connection reset', 'unable to download', 'network']):
+        return f'O download do {site} foi interrompido. Confira sua conexão e tente novamente. ' + error_reason(error)
     if any(word in text for word in ['login', 'sign in', 'cookies', 'authentication']):
         return f'O {site} está exigindo uma sessão. Use “Importar sessão” com um arquivo de cookies da sua conta e tente novamente.'
     if any(word in text for word in ['429', 'rate limit', 'too many requests']):
@@ -104,7 +119,7 @@ def extraction_message(error, url):
         return 'Esse formato/qualidade não está disponível para este vídeo. Tente MP4 ou MKV e outra qualidade.'
     if any(word in text for word in ['private', 'removed', 'not available', 'unavailable']):
         return f'O vídeo está indisponível para esta sessão no {site}. Confira se ele abre na sua conta e importe a sessão se necessário.'
-    return f'Não foi possível obter o vídeo do {site}. Confira o link, tente importar uma sessão ou procure uma atualização do app.'
+    return f'Não foi possível obter o vídeo do {site}. ' + error_reason(error)
 
 
 @app.post("/api/info")
@@ -155,23 +170,20 @@ def prepare_download(body: Download, progress=None, directory=None):
             clean = base.replace('[height<=?', '[format_note!*=watermarked][height<=?')
             opts['format'] = clean + '/' + base
         if body.start_time is not None:
-            def ranges(info, _downloader):
+            # Keep original codecs until the final local cut; encode only once.
+            opts['postprocessors'] = []
+            if body.container != 'mp3':
+                opts['merge_output_format'] = 'mkv'
+            def check_interval(info, *, incomplete=False):
+                if incomplete:
+                    return None
                 duration = info.get('duration')
                 if info.get('is_live'):
                     raise HTTPException(422, 'Escolha um vídeo já publicado para baixar um trecho.')
                 if duration is not None and (body.start_time >= duration or body.end_time > duration):
                     raise HTTPException(422, 'O trecho deve ficar dentro da duração do vídeo.')
-                return [{'start_time': body.start_time, 'end_time': body.end_time}]
-            opts['download_ranges'] = ranges
-            opts['force_keyframes_at_cuts'] = True
-            if body.container != 'mp3':
-                # Pin codecs/muxer: FFmpeg's inferred intermediate container may
-                # otherwise choose a video codec unsupported by the Windows player.
-                codec_args = (['-c:v', 'libvpx-vp9', '-c:a', 'libopus', '-f', 'webm']
-                              if body.container == 'webm' else
-                              ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
-                               '-f', 'matroska' if body.container == 'mkv' else 'mp4'])
-                opts['external_downloader_args'] = {'ffmpeg_o': codec_args}
+                return None
+            opts['match_filter'] = check_interval
         if progress:
             def hook(data):
                 total = data.get('total_bytes') or data.get('total_bytes_estimate')
@@ -190,6 +202,13 @@ def prepare_download(body: Download, progress=None, directory=None):
         if len(files) != 1:
             raise HTTPException(422, "Não foi possível preparar o arquivo.")
         path = files[0]
+        if body.start_time is not None:
+            check_interval(data)
+            if progress:
+                progress({'state': 'cutting', 'percent': None})
+            destination = Path(folder.name) / f'clip.{body.container}'
+            cut_clip(path, destination, body.start_time, body.end_time, body.container)
+            path = destination
         title = yt_dlp.utils.sanitize_filename(data.get("title") or "video", restricted=True)[:120]
         return FileResponse(path, filename=f"{title}{path.suffix}",
                             background=BackgroundTask(folder.cleanup))
