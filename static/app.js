@@ -7,7 +7,7 @@ let chosenLink = '', selectedRange = null, videoDuration = null, selectionTrigge
 let toastExit;
 const expansionAnimations = new Map();
 let soundEnabled = localStorage.getItem('kupotube-sound') !== 'off';
-function message(text, error = false) { status.textContent = text; status.classList.toggle('error', error); }
+function message(text, error = false) { $('#reveal-download').hidden = true; status.textContent = text; status.classList.toggle('error', error); }
 function setBusy(value) {
   busy = value;
   for (const element of [analyze, download, url, quality, container, $('#import-session'), $('#remove-session'), $('#edit-selection')]) element.disabled = value;

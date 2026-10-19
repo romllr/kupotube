@@ -1,4 +1,4 @@
-# Kupotube — prévia experimental da UI 05
+# Kupotube — prévia experimental da UI 06
 
 Esta cópia serve para avaliar a interface antes de lançar para todos.
 

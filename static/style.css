@@ -146,3 +146,18 @@ footer p{max-width:560px;margin:0 auto;text-align:center;line-height:1.8;overflo
 .secondary-button{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .secondary-button img{width:18px;height:18px;flex-shrink:0;margin:0}
 .secondary-button:not(.cookies-help-button) img{filter:none}
+
+/* UI preview 06: balanced video summary and inline file-location action. */
+.video-summary{gap:18px;padding:20px 64px 20px 20px;align-items:center}
+.video-summary>div{display:flex;flex-direction:column;gap:9px;flex:1}
+.video-summary .small{line-height:1.5;gap:7px}
+.video-summary .small img{filter:brightness(0) saturate(100%) invert(87%) sepia(15%) saturate(732%) hue-rotate(54deg) brightness(91%) contrast(93%)}
+.video-summary h2{margin:0;line-height:1.5;font-size:17px}
+.video-summary #meta{margin:0;line-height:1.6;font-size:13px}
+#edit-selection img{filter:none;opacity:1}
+.status-row{margin-top:18px;padding:14px 16px;border:1px solid #b7bdf81a;border-radius:10px;background:#b7bdf80b;line-height:1.8;font-size:13px;color:var(--lavender);overflow-wrap:anywhere}
+.status-row:has(#status:empty){display:none}.status-row:has(#status.error){background:#ed87960b;border-color:#ed87962b}
+.status-row #status{display:inline;margin:0;padding:0;border:0;border-radius:0;background:none;font:inherit}
+#reveal-download{display:inline;margin:0 0 0 4px;padding:0;border:0;border-radius:2px;background:none;color:var(--green);font:inherit;font-weight:700;box-shadow:none;white-space:normal;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#a6da9560}
+#reveal-download:hover{background:none;color:var(--green);text-decoration-color:var(--green);filter:none}
+@media(max-width:650px){.video-summary{gap:12px;padding:16px 52px 16px 14px}.video-summary h2{font-size:15px}.video-summary .video-icon{min-width:40px;height:44px}.video-summary>div{gap:7px}}
