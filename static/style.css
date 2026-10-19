@@ -107,3 +107,23 @@ main>h1,main>.intro{text-align:center}
 #download:hover:not(:disabled),#download:focus-visible{box-shadow:0 0 20px #8aadf433,0 4px 14px #8aadf418;filter:brightness(1.045)}
 #analyze:hover:not(:disabled){box-shadow:0 0 18px #c6a0f624,0 3px 12px #c6a0f612}
 @media(max-width:650px){.intro{font-size:12px}main>.eyebrow{font-size:9px}.platforms>span{font-size:10px}.news-badge{font-size:8px}}
+
+/* UI preview 03: clearer reading hierarchy and contextual Phosphor icons. */
+body{font-size:15px}
+h1{font-size:clamp(48px,6.1vw,84px)}
+main>.eyebrow{font-family:inherit;font-size:12px;font-weight:600;letter-spacing:.8px;gap:9px}
+.eyebrow img{width:17px;height:17px;opacity:.85}
+.intro{font-family:inherit;font-size:16px;line-height:1.75;max-width:720px}
+label{font-size:14px}.input-row input{font-size:15px}
+button,select{font-size:14px}.update-check-button{font-size:12px}
+#hint{font-size:12px}.session-options summary,.session-options p{font-size:13px}
+.platforms b{font-size:14px}.platforms>span{font-size:12px}
+.steps article>span{display:flex;align-items:center;gap:10px}
+.steps article>span img{width:22px;height:22px;opacity:.85}
+.steps h3{font-size:15px}.steps p{font-size:13px}
+.maker-credit{font-size:13px}footer p{font-size:11px}
+.release-news,.release-news .news-link{font-size:12px}
+.releases-dialog>p,#release-picker,#release-content ul{font-size:14px}
+#release-content h3{font-size:16px}.release-navigation button{font-size:12px}
+@media(max-width:700px){.steps article>span{flex-direction:column;align-items:flex-start;gap:6px}}
+@media(max-width:650px){main>.eyebrow{font-size:10px}.intro{font-size:15px}.input-row input{font-size:14px}.release-news .news-link{font-size:11px}}

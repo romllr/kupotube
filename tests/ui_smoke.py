@@ -55,7 +55,9 @@ with sync_playwright() as p:
     assert page.locator('h1').inner_text() == 'Cole o link.\nBaixe o vídeo.'
     assert 'qualidade e o formato' in page.locator('.intro').inner_text()
     assert page.locator('.eyebrow').inner_text() == 'DOWNLOAD DIRETO · NO SEU COMPUTADOR'
-    assert 'JetBrains Mono' in page.locator('.eyebrow').evaluate('e => getComputedStyle(e).fontFamily')
+    assert 'DM Sans' in page.locator('.eyebrow').evaluate('e => getComputedStyle(e).fontFamily')
+    assert 'DM Sans' in page.locator('.intro').evaluate('e => getComputedStyle(e).fontFamily')
+    assert float(page.locator('h1').evaluate('e => parseFloat(getComputedStyle(e).fontSize)')) >= 60
     assert page.locator('body').evaluate('e => getComputedStyle(e).backgroundColor') == 'rgb(24, 25, 38)'
     assert 'YouTube' in page.locator('.session-options summary').inner_text()
     assert page.locator('.header-note').count() == 0
@@ -64,7 +66,7 @@ with sync_playwright() as p:
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
     assert page.locator('#release-picker option').count() == 8
-    expect(page.locator('#release-content')).to_contain_text('UI preview 02')
+    expect(page.locator('#release-content')).to_contain_text('UI preview 03')
     first_height = page.locator('#releases-dialog').bounding_box()['height']
     page.select_option('#release-picker','7')
     expect(page.locator('#release-content')).to_contain_text('v0.3.2')
