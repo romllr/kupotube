@@ -1,6 +1,7 @@
 """Native Windows window with an embedded WebView2 interface."""
 import asyncio
 import logging
+import subprocess
 from pathlib import Path
 import os
 from fastapi import HTTPException
@@ -25,11 +26,13 @@ class DesktopAPI:
         self._lock = threading.Lock()
         self._state = {'state': 'idle', 'percent': None}
         self._active = False
+        self._destination = None
+        self._completed_path = None
         self._update_status = {'state': 'idle'}
 
     def get_progress(self):
         with self._lock:
-            return dict(self._state)
+            return {**self._state, **({'folder': str(self._destination.parent)} if self._destination else {})}
 
     def _update(self, state):
         with self._lock:
@@ -40,6 +43,8 @@ class DesktopAPI:
             if self._active:
                 return {'error': 'Já existe um download em andamento.'}
             self._active = True
+            self._destination = None
+            self._completed_path = None
             self._state = {'state': 'choosing', 'percent': None}
         try:
             body = Download(url=url, quality=quality, container=container, start_time=start_time, end_time=end_time)
@@ -56,6 +61,8 @@ class DesktopAPI:
             destination = Path(target[0] if isinstance(target, (tuple, list)) else target)
             if destination.suffix.lower() != '.' + container:
                 destination = Path(str(destination) + '.' + container)
+            with self._lock:
+                self._destination = destination
             self._update({'state': 'preparing', 'percent': None})
             threading.Thread(target=self._run, args=(body, destination), daemon=True).start()
             return {'started': True}
@@ -72,6 +79,8 @@ class DesktopAPI:
             response = prepare_download(body, progress=self._update, directory=str(destination.parent))
             self._update({'state': 'saving', 'percent': None})
             os.replace(response.path, destination)
+            with self._lock:
+                self._completed_path = destination
             self._update({'state': 'complete', 'percent': 100, 'filename': destination.name})
         except Exception as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else 'O download falhou. Confira o link, o espaço livre ou tente outro formato.'
@@ -84,6 +93,18 @@ class DesktopAPI:
                 with self._lock:
                     self._active = False
 
+
+    def reveal_download(self):
+        with self._lock:
+            path = self._completed_path
+        if path is None or not path.is_file():
+            return {'error': 'O arquivo não está mais na pasta onde foi salvo.'}
+        try:
+            # Pass the exact path as an argument; never execute it through a shell.
+            subprocess.Popen(['explorer.exe', '/select,', str(path)])
+            return {'opened': True}
+        except OSError:
+            return {'error': 'Não foi possível abrir o local do arquivo.'}
 
     def get_preferences(self):
         return get_preferences()

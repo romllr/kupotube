@@ -61,7 +61,30 @@ async function dismissToast() {
   if (toast.contains(document.activeElement)) download.focus();
 }
 $('#toast-close').addEventListener('click', dismissToast);
+function resetDownloadDisplay() {
+  $('#reveal-download').hidden = true;
+  $('#clear-result').hidden = true;
+  $('#download-destination').hidden = true;
+  $('#download-destination span').textContent = '';
+}
+$('#clear-result').addEventListener('click', () => {
+  if (busy) return;
+  url.value = ''; url.dispatchEvent(new Event('input'));
+  videoTitle = ''; quality.replaceChildren(); $('#title').textContent = ''; $('#meta').textContent = '';
+  $('#clip-start').value = ''; $('#clip-end').value = '';
+  dismissToast(); url.focus();
+});
+$('#reveal-download').addEventListener('click', async () => {
+  try {
+    const answer = await window.pywebview.api.reveal_download();
+    if (answer.error) message(answer.error, true);
+  } catch (_) { message('Não foi possível abrir o local do arquivo.', true); }
+});
 function showProgress(data) {
+  if (data.folder) {
+    $('#download-destination').hidden = false;
+    $('#download-destination span').textContent = data.folder;
+  }
   progress.hidden = false;
   const known = Number.isFinite(data.percent);
   progressBar.classList.toggle('indeterminate', !known);
@@ -134,7 +157,7 @@ $('#selection-form').addEventListener('submit', event => {
 });
 selectionDialog.addEventListener('close', () => selectionTrigger.focus());
 $('#edit-selection').addEventListener('click', () => showSelection($('#edit-selection')));
-url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; container.value = 'mp4'; container.dispatchEvent(new Event('change')); message(''); });
+url.addEventListener('input', () => { resetDownloadDisplay(); result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; container.value = 'mp4'; container.dispatchEvent(new Event('change')); message(''); });
 url.addEventListener('paste', event => {
   const pasted = event.clipboardData?.getData('text')?.trim();
   if (!pasted) return;
@@ -176,7 +199,7 @@ async function followDownload() {
 download.addEventListener('click', async () => {
   if (!selectedUrl || busy) return;
   try { validateRange(selectedRange); } catch (error) { message(error.message, true); showSelection($('#edit-selection')); return; }
-  prepareAudio(); setBusy(true); message('');
+  resetDownloadDisplay(); prepareAudio(); setBusy(true); message('');
   showProgress({state: 'preparing', percent: null});
   progress.scrollIntoView({behavior: 'smooth', block: 'nearest'});
   try {
@@ -186,6 +209,7 @@ download.addEventListener('click', async () => {
       if (outcome.cancelled) { progress.hidden = true; message('Salvamento cancelado.'); return; }
       const completed = await followDownload();
       message(container.value === 'mp3' ? 'Áudio salvo na pasta escolhida.' : 'Vídeo salvo na pasta escolhida.');
+      $('#reveal-download').hidden = false; $('#clear-result').hidden = false;
       notifyComplete(completed.filename || 'Seu vídeo foi salvo.');
       return;
     }
@@ -199,6 +223,7 @@ download.addEventListener('click', async () => {
     document.body.append(anchor); anchor.click(); anchor.remove();
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
     showProgress({state: 'complete', percent: 100});
+    $('#clear-result').hidden = false;
     message('Arquivo enviado aos downloads do navegador.'); notifyComplete('Arquivo pronto para salvar no navegador.');
   } catch (error) { progress.hidden = true; message(error.message, true); }
   finally { setBusy(false); }

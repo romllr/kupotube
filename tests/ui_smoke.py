@@ -33,9 +33,10 @@ with sync_playwright() as p:
       get_update_progress: async () => ({state:'error',error:'Falha de atualização simulada'}),
       get_preferences: async () => ({sound:true}),
       set_sound_enabled: async () => ({saved:true}),
+      reveal_download: async () => { window.revealed = true; return {opened:true}; },
       get_progress: async () => {
         window.polls++;
-        if(window.polls < 5) return {state:'downloading', percent:42, track:'Vídeo', speed:2097152, eta:8};
+        if(window.polls < 5) return {state:'downloading', percent:42, track:'Vídeo', speed:2097152, eta:8, folder:'C:/Users/Test/Downloads/Pasta de vídeos'};
         if(window.polls < 7) return {state:'processing', percent:null};
         return {state:'complete', percent:100, filename:window.lastFormat === 'mp3' ? 'Meu áudio.mp3' : 'Meu vídeo.mp4'};
       }
@@ -66,7 +67,7 @@ with sync_playwright() as p:
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
     assert page.locator('#release-picker option').count() == 8
-    expect(page.locator('#release-content')).to_contain_text('UI preview 03')
+    expect(page.locator('#release-content')).to_contain_text('UI preview 04')
     first_height = page.locator('#releases-dialog').bounding_box()['height']
     page.select_option('#release-picker','7')
     expect(page.locator('#release-content')).to_contain_text('v0.3.2')
@@ -143,11 +144,17 @@ with sync_playwright() as p:
     page.click('#download')
     page.wait_for_function("document.querySelector('#progress-value').textContent === '42%'")
     assert page.locator('#download').is_disabled()
+    expect(page.locator('#download-destination')).to_contain_text('C:/Users/Test/Downloads/Pasta de vídeos')
+    expect(page.locator('#clear-result')).to_be_hidden()
     assert page.evaluate('window.lastRange') == [7,19]
     assert page.locator('#progress-bar').evaluate("e => getComputedStyle(e).backgroundColor") == 'rgb(166, 218, 149)'
     page.wait_for_selector('#toast',state='visible')
     assert page.locator('#progress-value').inner_text()=='100%'
     assert page.locator('#toast-text').inner_text()=='Meu vídeo.mp4'
+    expect(page.locator('#clear-result')).to_be_visible()
+    page.click('#reveal-download')
+    assert page.evaluate('window.revealed') is True
+    assert page.locator('#download-destination').is_visible()
     assert page.locator('#download').is_enabled()
     page.click('#toast-close')
     expect(page.locator('#toast')).to_be_hidden()
@@ -226,6 +233,13 @@ with sync_playwright() as p:
     if sys.platform != 'win32': page.screenshot(path='/tmp/kupotube-034.png', full_page=True)
     assert page.locator('img').evaluate_all('(images) => images.every(i => i.complete && i.naturalWidth > 0)')
     # A previous MP3 choice must not silently carry over to a new video.
+    page.click('#clear-result')
+    expect(page.locator('#result')).to_be_hidden()
+    expect(page.locator('#progress')).to_be_hidden()
+    expect(page.locator('#reveal-download')).to_be_hidden()
+    expect(page.locator('#url')).to_have_value('')
+    expect(page.locator('#url')).to_be_focused()
+    assert page.locator('#status').inner_text() == ''
     page.fill('#url','https://youtu.be/another')
     assert page.locator('#container').input_value() == 'mp4'
     page.fill('#url','')
