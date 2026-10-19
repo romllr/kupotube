@@ -47,8 +47,8 @@ with sync_playwright() as p:
         page.screenshot(path='/tmp/kupotube-ui-preview-home.png', full_page=True)
         page.locator('#update-banner').evaluate('e => e.hidden = false')
     page.evaluate('document.fonts.ready')
-    assert page.evaluate("document.fonts.check('16px Ubuntu')")
-    assert page.locator('body').evaluate('e => getComputedStyle(e).fontFamily').startswith('Ubuntu')
+    assert page.evaluate("document.fonts.check('16px DM Sans')")
+    assert page.locator('body').evaluate('e => getComputedStyle(e).fontFamily').startswith('\"DM Sans\"')
     assert page.locator('.maker-credit').inner_text() == 'Made by romllr <3'
     assert page.locator('.maker-credit').evaluate("e => getComputedStyle(e).color") == 'rgb(245, 189, 230)'
     assert page.locator('html').evaluate("e => getComputedStyle(e).scrollbarColor") == 'rgb(91, 96, 120) rgb(20, 21, 31)'
@@ -59,10 +59,12 @@ with sync_playwright() as p:
     assert page.locator('body').evaluate('e => getComputedStyle(e).backgroundColor') == 'rgb(24, 25, 38)'
     assert 'YouTube' in page.locator('.session-options summary').inner_text()
     assert page.locator('.header-note').count() == 0
+    assert page.locator('.platforms>span').inner_text() == 'Compatível com:'
+    assert float(page.locator('.intro').evaluate('e => parseFloat(getComputedStyle(e).fontSize)')) >= 13
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
     assert page.locator('#release-picker option').count() == 8
-    expect(page.locator('#release-content')).to_contain_text('UI preview 01')
+    expect(page.locator('#release-content')).to_contain_text('UI preview 02')
     first_height = page.locator('#releases-dialog').bounding_box()['height']
     page.select_option('#release-picker','7')
     expect(page.locator('#release-content')).to_contain_text('v0.3.2')
@@ -133,6 +135,9 @@ with sync_playwright() as p:
     assert page.locator('#update-banner').is_visible()
     assert page.locator('#container').evaluate("e => getComputedStyle(e).appearance") == 'none'
     page.select_option('#container','mkv')
+    page.locator('#download').hover()
+    page.wait_for_timeout(230)
+    assert page.locator('#download').evaluate('e => getComputedStyle(e).boxShadow') != 'none'
     page.click('#download')
     page.wait_for_function("document.querySelector('#progress-value').textContent === '42%'")
     assert page.locator('#download').is_disabled()
@@ -199,7 +204,9 @@ with sync_playwright() as p:
     for width, height in [(360, 650), (580, 650), (800, 700), (1280, 900), (1920, 1080)]:
         page.set_viewport_size({'width':width,'height':height})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), width
-        assert abs(page.locator('main').bounding_box()['width'] - page.evaluate('document.documentElement.clientWidth')) < 1
+        box = page.locator('main').bounding_box()
+        assert abs(box['x'] + box['width'] / 2 - page.evaluate('document.documentElement.clientWidth') / 2) < 1
+        assert box['width'] <= 1120
         page.click('#edit-selection')
         expect(page.locator('#selection-dialog')).to_be_visible()
         assert page.locator('#selection-dialog').bounding_box()['height'] <= height - 39

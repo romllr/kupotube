@@ -16,7 +16,7 @@ import desktop
 
 class PreviewAPI(desktop.DesktopAPI):
     def check_update(self):
-        return {'available':False,'experimental':True,'current':'0.3.8-ui-preview.1'}
+        return {'available':False,'experimental':True,'current':'0.3.8-ui-preview.2'}
 
     def install_update(self):
         return {'error':'O atualizador está desativado nesta prévia da interface.'}

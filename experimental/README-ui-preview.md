@@ -1,10 +1,10 @@
-# Kupotube — prévia experimental da UI 01
+# Kupotube — prévia experimental da UI 02
 
 Esta cópia serve para avaliar a interface antes de lançar para todos.
 
 Extraia o ZIP e abra **Kupotube-UI-Preview.exe**. Não precisa instalar Python. Os downloads continuam disponíveis nesta versão de teste.
 
-- Fundo mais escuro, Ubuntu nos textos principais e JetBrains Mono nos textos de apoio.
+- Fundo mais escuro, DM Sans nos textos principais e JetBrains Mono nos textos de apoio.
 - Histórico com uma versão por vez, seletor e navegação para as anteriores.
 - Expansões animadas e preferência por movimento reduzido respeitada.
 - Dados de sessão e preferências separados em `%LOCALAPPDATA%\Kupotube-UI-Preview`.
