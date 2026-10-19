@@ -55,6 +55,7 @@ def test_download_returns_while_worker_is_busy(tmp_path):
             assert api.start_download('https://youtu.be/example', 720, 'webm') == {'started': True}
             assert entered.wait(2)
             assert api.get_progress()['percent'] == 42
+            assert api.get_progress()['folder'] == str(tmp_path)
             assert 'error' in api.start_download('https://youtu.be/example', 720)
         finally:
             release.set()
@@ -108,3 +109,21 @@ def test_native_forwards_selected_times(tmp_path):
     assert body.start_time == 7 and body.end_time == 19
     assert destination == tmp_path / 'clip.mp4'
     thread.return_value.start.assert_called_once()
+
+
+def test_reveal_completed_file_and_missing_file(tmp_path):
+    destination = tmp_path / 'Vídeo com espaços.mp4'
+    source = tmp_path / 'temp.mp4'
+    source.write_bytes(b'video')
+    api = DesktopAPI()
+    with patch('desktop.subprocess.Popen') as launch:
+        assert 'error' in api.reveal_download()
+        launch.assert_not_called()
+        with patch('desktop.prepare_download', return_value=FileResponse(source)):
+            api._run(Download(url='https://youtu.be/example'), destination)
+        assert api.reveal_download() == {'opened': True}
+        launch.assert_called_once_with(['explorer.exe', '/select,', str(destination)])
+        destination.unlink()
+        launch.reset_mock()
+        assert 'error' in api.reveal_download()
+        launch.assert_not_called()

@@ -5,8 +5,9 @@ const progress = $('#progress'), progressBar = $('#progress-bar'), progressLabel
 let selectedUrl = '', videoTitle = '', busy = false, audioContext, toastTimer;
 let chosenLink = '', selectedRange = null, videoDuration = null, selectionTrigger = url;
 let toastExit;
+const expansionAnimations = new Map();
 let soundEnabled = localStorage.getItem('kupotube-sound') !== 'off';
-function message(text, error = false) { status.textContent = text; status.classList.toggle('error', error); }
+function message(text, error = false) { $('#reveal-download').hidden = true; status.textContent = text; status.classList.toggle('error', error); }
 function setBusy(value) {
   busy = value;
   for (const element of [analyze, download, url, quality, container, $('#import-session'), $('#remove-session'), $('#edit-selection')]) element.disabled = value;
@@ -60,7 +61,30 @@ async function dismissToast() {
   if (toast.contains(document.activeElement)) download.focus();
 }
 $('#toast-close').addEventListener('click', dismissToast);
+function resetDownloadDisplay() {
+  $('#reveal-download').hidden = true;
+  $('#clear-result').hidden = true;
+  $('#download-destination').hidden = true;
+  $('#download-destination span').textContent = '';
+}
+$('#clear-result').addEventListener('click', () => {
+  if (busy) return;
+  url.value = ''; url.dispatchEvent(new Event('input'));
+  videoTitle = ''; quality.replaceChildren(); $('#title').textContent = ''; $('#meta').textContent = '';
+  $('#clip-start').value = ''; $('#clip-end').value = '';
+  dismissToast(); url.focus();
+});
+$('#reveal-download').addEventListener('click', async () => {
+  try {
+    const answer = await window.pywebview.api.reveal_download();
+    if (answer.error) message(answer.error, true);
+  } catch (_) { message('Não foi possível abrir o local do arquivo.', true); }
+});
 function showProgress(data) {
+  if (data.folder) {
+    $('#download-destination').hidden = false;
+    $('#download-destination span').textContent = data.folder;
+  }
   progress.hidden = false;
   const known = Number.isFinite(data.percent);
   progressBar.classList.toggle('indeterminate', !known);
@@ -105,7 +129,7 @@ function showSelection(trigger = url) {
   selectionTrigger = trigger;
   $('#selection-error').textContent = '';
   $(`input[name="selection-mode"][value="${selectedRange ? 'clip' : 'full'}"]`).checked = true;
-  $('#clip-fields').hidden = !selectedRange;
+  resetReveal($('#clip-fields'), Boolean(selectedRange));
   $('#clip-start').value = selectedRange ? formatTimestamp(selectedRange.start_time) : '';
   $('#clip-end').value = selectedRange ? formatTimestamp(selectedRange.end_time) : '';
   $('#clip-format').value = container.value;
@@ -113,7 +137,7 @@ function showSelection(trigger = url) {
 }
 $('#selection-form').addEventListener('change', event => {
   if (event.target.name === 'selection-mode') {
-    $('#clip-fields').hidden = event.target.value !== 'clip';
+    reveal($('#clip-fields'), event.target.value === 'clip');
     $('#selection-error').textContent = '';
     if (event.target.value === 'clip') $('#clip-start').focus();
   }
@@ -133,7 +157,7 @@ $('#selection-form').addEventListener('submit', event => {
 });
 selectionDialog.addEventListener('close', () => selectionTrigger.focus());
 $('#edit-selection').addEventListener('click', () => showSelection($('#edit-selection')));
-url.addEventListener('input', () => { result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; container.value = 'mp4'; container.dispatchEvent(new Event('change')); message(''); });
+url.addEventListener('input', () => { resetDownloadDisplay(); result.hidden = true; progress.hidden = true; selectedUrl = ''; chosenLink = ''; selectedRange = null; videoDuration = null; container.value = 'mp4'; container.dispatchEvent(new Event('change')); message(''); });
 url.addEventListener('paste', event => {
   const pasted = event.clipboardData?.getData('text')?.trim();
   if (!pasted) return;
@@ -175,7 +199,7 @@ async function followDownload() {
 download.addEventListener('click', async () => {
   if (!selectedUrl || busy) return;
   try { validateRange(selectedRange); } catch (error) { message(error.message, true); showSelection($('#edit-selection')); return; }
-  prepareAudio(); setBusy(true); message('');
+  resetDownloadDisplay(); prepareAudio(); setBusy(true); message('');
   showProgress({state: 'preparing', percent: null});
   progress.scrollIntoView({behavior: 'smooth', block: 'nearest'});
   try {
@@ -184,7 +208,8 @@ download.addEventListener('click', async () => {
       if (outcome.error) throw new Error(outcome.error);
       if (outcome.cancelled) { progress.hidden = true; message('Salvamento cancelado.'); return; }
       const completed = await followDownload();
-      message(container.value === 'mp3' ? 'Áudio salvo! Pronto para ouvir.' : 'Vídeo salvo! Pronto para levar com você.');
+      message(container.value === 'mp3' ? 'Áudio salvo na pasta escolhida.' : 'Vídeo salvo na pasta escolhida.');
+      $('#reveal-download').hidden = false; $('#clear-result').hidden = false;
       notifyComplete(completed.filename || 'Seu vídeo foi salvo.');
       return;
     }
@@ -198,6 +223,7 @@ download.addEventListener('click', async () => {
     document.body.append(anchor); anchor.click(); anchor.remove();
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
     showProgress({state: 'complete', percent: 100});
+    $('#clear-result').hidden = false;
     message('Arquivo enviado aos downloads do navegador.'); notifyComplete('Arquivo pronto para salvar no navegador.');
   } catch (error) { progress.hidden = true; message(error.message, true); }
   finally { setBusy(false); }
@@ -264,7 +290,7 @@ async function checkUpdate(manual = false) {
       $('#update-banner').hidden = true;
       $('#check-update').classList.remove('has-update');
       $('#check-update').removeAttribute('title');
-      if (manual) updateDialog('O Kupo já está atualizado!', 'Você está com a versão mais recente. Tudo pronto para baixar seus próximos favoritos.', answer.current);
+      if (manual) updateDialog('O Kupo já está atualizado!', 'Nenhuma atualização disponível para esta versão.', answer.current);
     }
   } catch (error) { if (manual) updateDialog('Não foi possível verificar', error.message, '', true); }
   finally {
@@ -348,3 +374,94 @@ url.addEventListener('input', restartPlaceholder);
 document.addEventListener('visibilitychange', restartPlaceholder);
 reducedMotion.addEventListener('change', restartPlaceholder);
 restartPlaceholder();
+
+// One version at a time; the archived notes stay available without growing the dialog.
+const releaseEntries = [...$('#release-archive').content.querySelectorAll('details')];
+const releasePicker = $('#release-picker');
+releasePicker.replaceChildren(...releaseEntries.map((entry,index) => {
+  const option = document.createElement('option'); option.value = index;
+  const version = entry.querySelector('summary span').firstChild.textContent.trim();
+  option.textContent = version + (index === 0 ? ' · atual' : '');
+  return option;
+}));
+let releaseAnimation;
+function showRelease(index, animate = true) {
+  const entry = releaseEntries[index], panel = $('#release-content');
+  if (!entry) return;
+  const oldHeight = panel.getBoundingClientRect().height;
+  releaseAnimation?.cancel(); panel.style.removeProperty('overflow');
+  releasePicker.value = String(index);
+  const meta = document.createElement('div'); meta.className = 'release-meta';
+  const version = document.createElement('span'); version.className = 'release-version';
+  version.textContent = entry.querySelector('summary span').firstChild.textContent.trim();
+  const badge = document.createElement('span'); badge.className = 'release-badge';
+  badge.textContent = index === 0 ? 'ATUAL' : 'ARQUIVO';
+  meta.append(version,badge);
+  const title = document.createElement('h3'); title.textContent = entry.querySelector('summary span:last-child').textContent;
+  panel.replaceChildren(meta,title,entry.querySelector('ul').cloneNode(true));
+  $('#release-newer').disabled = index === 0;
+  $('#release-older').disabled = index === releaseEntries.length - 1;
+  $('#release-position').textContent = `${index + 1} / ${releaseEntries.length}`;
+  if (animate && !reducedMotion.matches) {
+    const newHeight = panel.getBoundingClientRect().height; panel.style.overflow = 'hidden';
+    const animation = panel.animate([{height:oldHeight+'px',opacity:.25},{height:newHeight+'px',opacity:1}],{duration:180,easing:'ease-out'});
+    releaseAnimation = animation;
+    animation.finished.then(() => { if (releaseAnimation === animation) panel.style.removeProperty('overflow'); }).catch(() => {});
+  }
+}
+releasePicker.addEventListener('change', () => showRelease(Number(releasePicker.value)));
+$('#release-newer').addEventListener('click', () => showRelease(Number(releasePicker.value) - 1));
+$('#release-older').addEventListener('click', () => showRelease(Number(releasePicker.value) + 1));
+showRelease(0,false);
+
+// Native details keep keyboard semantics. Only their height is animated.
+function finishExpansion(element) {
+  const existing = expansionAnimations.get(element);
+  if (existing) { existing.cancel(); expansionAnimations.delete(element); }
+  element.style.removeProperty('height'); element.style.removeProperty('overflow'); element.style.removeProperty('opacity');
+}
+function resetReveal(element, expanded) { finishExpansion(element); element.hidden = !expanded; }
+function reveal(element, expanded) {
+  const currentHeight = element.hidden ? 0 : element.getBoundingClientRect().height;
+  finishExpansion(element);
+  if (reducedMotion.matches) { element.hidden = !expanded; return; }
+  element.hidden = false;
+  const endHeight = expanded ? element.scrollHeight : 0;
+  element.style.overflow = 'hidden';
+  const animation = element.animate([{height:currentHeight+'px',opacity:currentHeight ? 1 : 0},{height:endHeight+'px',opacity:expanded ? 1 : 0}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'});
+  expansionAnimations.set(element,animation);
+  animation.finished.then(() => {
+    if (expansionAnimations.get(element) !== animation) return;
+    expansionAnimations.delete(element); element.hidden = !expanded;
+    element.style.removeProperty('overflow');
+  }).catch(() => {});
+}
+document.querySelectorAll('details').forEach(details => {
+  const summary = details.querySelector('summary');
+  const body = document.createElement('div'); body.className = 'details-body';
+  [...details.childNodes].filter(node => node !== summary).forEach(node => body.append(node));
+  details.append(body);
+  let expanded = details.open;
+  summary.addEventListener('click', event => {
+    event.preventDefault(); expanded = !expanded;
+    const start = details.getBoundingClientRect().height;
+    finishExpansion(details);
+    if (reducedMotion.matches) { details.open = expanded; return; }
+    details.open = true;
+    const style = getComputedStyle(details);
+    const collapsed = summary.getBoundingClientRect().height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const end = expanded ? details.getBoundingClientRect().height : collapsed;
+    details.style.overflow = 'hidden';
+    const animation = details.animate([{height:start+'px'},{height:end+'px'}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'});
+    expansionAnimations.set(details,animation);
+    animation.finished.then(() => {
+      if (expansionAnimations.get(details) !== animation) return;
+      expansionAnimations.delete(details); details.open = expanded; details.style.removeProperty('overflow');
+    }).catch(() => {});
+  });
+});
+reducedMotion.addEventListener('change', () => {
+  if (!reducedMotion.matches) return;
+  releaseAnimation?.cancel(); $('#release-content').style.removeProperty('overflow');
+  for (const animation of expansionAnimations.values()) animation.finish();
+});
