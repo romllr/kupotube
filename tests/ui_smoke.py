@@ -42,24 +42,36 @@ with sync_playwright() as p:
     }};''')
     page.goto(os.environ.get('KUPOTUBE_TEST_URL', 'http://127.0.0.1:8010/'))
     page.wait_for_selector('#update-banner',state='visible')
+    if sys.platform != 'win32':
+        page.locator('#update-banner').evaluate('e => e.hidden = true')
+        page.screenshot(path='/tmp/kupotube-ui-preview-home.png', full_page=True)
+        page.locator('#update-banner').evaluate('e => e.hidden = false')
     page.evaluate('document.fonts.ready')
     assert page.evaluate("document.fonts.check('16px Ubuntu')")
     assert page.locator('body').evaluate('e => getComputedStyle(e).fontFamily').startswith('Ubuntu')
     assert page.locator('.maker-credit').inner_text() == 'Made by romllr <3'
     assert page.locator('.maker-credit').evaluate("e => getComputedStyle(e).color") == 'rgb(245, 189, 230)'
-    assert page.locator('html').evaluate("e => getComputedStyle(e).scrollbarColor") == 'rgb(110, 115, 141) rgb(30, 32, 48)'
-    assert page.locator('h1').inner_text() == 'Baixador de vídeos.'
-    assert page.locator('.intro').inner_text() == 'Simples, rápido e fácil.'
-    assert page.locator('.eyebrow').inner_text() == 'Download em segundos.'
+    assert page.locator('html').evaluate("e => getComputedStyle(e).scrollbarColor") == 'rgb(91, 96, 120) rgb(20, 21, 31)'
+    assert page.locator('h1').inner_text() == 'Cole o link.\nBaixe o vídeo.'
+    assert 'qualidade e o formato' in page.locator('.intro').inner_text()
+    assert page.locator('.eyebrow').inner_text() == 'DOWNLOAD DIRETO · NO SEU COMPUTADOR'
+    assert 'JetBrains Mono' in page.locator('.eyebrow').evaluate('e => getComputedStyle(e).fontFamily')
+    assert page.locator('body').evaluate('e => getComputedStyle(e).backgroundColor') == 'rgb(24, 25, 38)'
     assert 'YouTube' in page.locator('.session-options summary').inner_text()
     assert page.locator('.header-note').count() == 0
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
-    assert page.locator('.release-list details').count() == 7
-    assert page.locator('.release-list details').first.get_attribute('open') is not None
-    page.locator('.release-list summary').nth(1).click()
-    expect(page.locator('.release-list details').nth(1).locator('ul')).to_be_visible()
-    assert 'recorte local' in page.locator('.release-list details').nth(1).inner_text()
+    assert page.locator('#release-picker option').count() == 8
+    expect(page.locator('#release-content')).to_contain_text('UI preview 01')
+    first_height = page.locator('#releases-dialog').bounding_box()['height']
+    page.select_option('#release-picker','7')
+    expect(page.locator('#release-content')).to_contain_text('v0.3.2')
+    assert page.locator('#release-older').is_disabled()
+    page.click('#release-newer')
+    expect(page.locator('#release-content')).to_contain_text('v0.3.3')
+    page.select_option('#release-picker','2')
+    expect(page.locator('#release-content')).to_contain_text('recorte local')
+    assert page.locator('#releases-dialog').bounding_box()['height'] < 650
     page.keyboard.press('Escape')
     expect(page.locator('#release-news')).to_be_focused()
     assert page.locator('#cookies-help').evaluate('e => getComputedStyle(e).color') == 'rgb(245, 189, 230)'
@@ -84,6 +96,11 @@ with sync_playwright() as p:
     expect(page.locator('#cookies-dialog')).not_to_be_visible()
     expect(page.locator('#cookies-help')).to_be_focused()
     page.locator('.session-options summary').click()
+    page.wait_for_function("!document.querySelector('.session-options').open")
+    page.locator('.session-options summary').evaluate('e => e.click()')
+    assert page.locator('.session-options').evaluate('e => e.getAnimations().length') > 0
+    page.locator('.session-options summary').evaluate('e => e.click()')
+    page.wait_for_function("!document.querySelector('.session-options').open")
     assert not page.locator('#update-dialog').is_visible()
     assert page.locator('#check-update').bounding_box()['y'] < 150
     page.fill('#url','https://youtu.be/example')
@@ -208,6 +225,10 @@ with sync_playwright() as p:
     page.locator('#url').focus()
     expect(page.locator('#url')).to_have_attribute('placeholder','Cole o link do vídeo aqui…')
     page.emulate_media(reduced_motion='reduce')
+    page.locator('.session-options summary').click()
+    assert not page.locator('.session-options').evaluate('e => e.open')
+    page.locator('.session-options summary').click()
+    assert page.locator('.session-options').evaluate('e => e.open')
     page.click('#release-news')
     assert page.locator('#releases-dialog').evaluate('e => getComputedStyle(e).animationName') == 'none'
     page.keyboard.press('Escape')

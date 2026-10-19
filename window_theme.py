@@ -1,7 +1,7 @@
 """Macchiato native caption, keeping Windows resizing and accessibility intact."""
 import sys
 
-COLORS = {34: '#363a4f', 35: '#24273a', 36: '#cad3f5'}
+COLORS = {34: '#24273a', 35: '#181926', 36: '#cad3f5'}
 
 
 def colorref(value):

@@ -1,0 +1,98 @@
+name: Kupotube — prévia experimental da UI
+on:
+  workflow_dispatch:
+  push:
+    branches: [experimental/ui-refresh]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Instalar dependências de compilação
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller==6.16.0 imageio-ffmpeg==0.6.0 playwright==1.64.0 "yt-dlp[default,curl-cffi]==2026.8.19"
+      - name: Testar
+        run: python -m pytest -q
+      - name: Validar atualização e reinício empacotados
+        run: |
+          python -m PyInstaller --noconfirm --onefile --paths . --distpath updater-smoke --workpath build/updater-smoke --name KupoFixture tests/updater_fixture.py
+          python tests/windows_update_smoke.py updater-smoke/KupoFixture.exe
+      - name: Validar interface e progresso
+        shell: pwsh
+        run: |
+          $server = Start-Process python -ArgumentList '-m', 'uvicorn', 'app:app', '--host', '127.0.0.1', '--port', '8010' -PassThru
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              try {
+                $response = Invoke-WebRequest http://127.0.0.1:8010/ -UseBasicParsing
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $ready) { throw 'Servidor de teste não iniciou.' }
+            python tests/ui_smoke.py
+            if ($LASTEXITCODE -ne 0) { throw 'Falha no teste da interface.' }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
+      - name: Preparar ferramentas incluídas
+        shell: python
+        run: |
+          from pathlib import Path
+          import shutil
+          import imageio_ffmpeg
+          Path('tools').mkdir(exist_ok=True)
+          shutil.copy2(imageio_ffmpeg.get_ffmpeg_exe(), 'tools/ffmpeg.exe')
+          shutil.copy2(shutil.which('node'), 'tools/node.exe')
+      - name: Validar recortes com FFmpeg incluído
+        run: python tests/windows_media_smoke.py tools/ffmpeg.exe
+      - name: Gerar executável
+        run: python -m PyInstaller --noconfirm experimental/KupotubePreview.spec
+      - name: Validar inicialização do executável
+        shell: pwsh
+        run: |
+          $process = Start-Process dist/Kupotube-UI-Preview.exe -PassThru
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 90; $attempt++) {
+              Start-Sleep -Seconds 1
+              $process.Refresh()
+              if ($process.HasExited) { throw 'O executável encerrou antes de iniciar.' }
+              $connections = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -eq $process.Id })
+              # PyInstaller onefile starts a child process that owns the server.
+              $children = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $process.Id }
+              foreach ($child in $children) {
+                $connections += @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -eq $child.ProcessId })
+              }
+              foreach ($connection in $connections) {
+                $response = Invoke-WebRequest "http://127.0.0.1:$($connection.LocalPort)/" -UseBasicParsing
+                if ($response.StatusCode -eq 200 -and $response.Content.Contains('PRÉVIA UI')) { $ready = $true; break }
+              }
+              if ($ready) { break }
+            }
+            if (-not $ready) { throw 'O executável não serviu a interface.' }
+          } finally {
+            taskkill /PID $process.Id /T /F
+          }
+      - name: Preparar pacote experimental
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/ui-preview | Out-Null
+          Copy-Item dist/Kupotube-UI-Preview.exe dist/ui-preview/
+          Copy-Item experimental/README-ui-preview.md dist/ui-preview/README.md
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Kupotube-UI-Preview-Windows-x64
+          path: dist/ui-preview/
+          if-no-files-found: error
+          retention-days: 14
+
