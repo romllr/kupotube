@@ -141,3 +141,8 @@ button,select{font-size:14px}.update-check-button{font-size:12px}
 footer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px 28px;align-items:center}
 footer p{max-width:560px;margin:0 auto;text-align:center;line-height:1.8;overflow-wrap:anywhere}
 @media(max-width:700px){footer{grid-template-columns:1fr auto;gap:14px}footer p{grid-column:1/-1;grid-row:2;width:100%;max-width:100%;text-align:left}.version-area{justify-self:end}.platforms{margin-block:28px}.steps{margin-bottom:28px}}
+
+/* Keep leading action icons aligned and readable on dark buttons. */
+.secondary-button{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.secondary-button img{width:18px;height:18px;flex-shrink:0;margin:0}
+.secondary-button:not(.cookies-help-button) img{filter:none}

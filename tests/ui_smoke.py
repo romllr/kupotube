@@ -67,7 +67,7 @@ with sync_playwright() as p:
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
     assert page.locator('#release-picker option').count() == 8
-    expect(page.locator('#release-content')).to_contain_text('UI preview 04')
+    expect(page.locator('#release-content')).to_contain_text('UI preview 05')
     first_height = page.locator('#releases-dialog').bounding_box()['height']
     page.select_option('#release-picker','7')
     expect(page.locator('#release-content')).to_contain_text('v0.3.2')
