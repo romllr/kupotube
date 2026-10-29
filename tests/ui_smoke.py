@@ -67,13 +67,13 @@ with sync_playwright() as p:
     page.click('#release-news')
     expect(page.locator('#releases-dialog')).to_be_visible()
     assert page.locator('#release-picker option').count() == 3
-    expect(page.locator('#release-content')).to_contain_text('v0.3.9')
+    expect(page.locator('#release-content')).to_contain_text('v0.3.10')
     first_height = page.locator('#releases-dialog').bounding_box()['height']
     page.select_option('#release-picker','2')
     expect(page.locator('#release-content')).to_contain_text('Versões anteriores')
     assert page.locator('#release-older').is_disabled()
     page.click('#release-newer')
-    expect(page.locator('#release-content')).to_contain_text('v0.3.8')
+    expect(page.locator('#release-content')).to_contain_text('v0.3.9')
     page.select_option('#release-picker','2')
     expect(page.locator('#release-content')).to_contain_text('escolha de formato')
     assert page.locator('#releases-dialog').bounding_box()['height'] < 650

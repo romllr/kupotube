@@ -19,7 +19,6 @@ from starlette.background import BackgroundTask
 
 ROOT = Path(__file__).parent
 app = FastAPI(title="Kupotube")
-HOSTS = {"youtube.com", "youtu.be", "tiktok.com", "pinterest.com", "pin.it", "instagram.com"}
 
 
 class Request(BaseModel):
@@ -46,21 +45,20 @@ def validate_url(url):
         parsed = urlsplit(url)
         port = parsed.port
     except ValueError:
-        raise HTTPException(400, 'Use um link HTTPS válido.')
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or parsed.username or parsed.password or port not in (None, 443):
-        raise HTTPException(400, "Use um link HTTPS válido.")
-    if not any(host == h or host.endswith("." + h) for h in HOSTS):
-        raise HTTPException(400, "Cole um link do YouTube, TikTok, Pinterest ou Instagram.")
+        raise HTTPException(400, 'Use um link HTTP ou HTTPS válido.')
+    host = (parsed.hostname or "").lower().rstrip('.')
+    if (parsed.scheme not in ('http', 'https') or not host or parsed.username is not None
+            or parsed.password is not None or port == 0
+            or any(char.isspace() or char in '\\%' for char in parsed.netloc)):
+        raise HTTPException(400, "Use um link HTTP ou HTTPS válido.")
+    if '.' not in host or host.endswith(('.localhost', '.local', '.internal')):
+        raise HTTPException(400, "Endereço não permitido.")
     try:
-        addresses = socket.getaddrinfo(host, 443)
-        if any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
+        addresses = socket.getaddrinfo(host, port or (443 if parsed.scheme == 'https' else 80), type=socket.SOCK_STREAM)
+        if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
             raise HTTPException(400, "Endereço não permitido.")
     except socket.gaierror:
-        # In proxy-backed environments DNS may be resolved only by the HTTPS proxy.
-        # Only fixed, already-allowlisted platform hostnames can reach this branch.
-        if not (os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')):
-            raise HTTPException(400, "Não foi possível encontrar esse site.")
+        raise HTTPException(400, "Não foi possível encontrar esse site.")
     return url
 
 
@@ -104,7 +102,7 @@ def error_reason(error):
 def extraction_message(error, url):
     text = str(error).lower()
     host = (urlsplit(url).hostname or '').lower()
-    site = next((name for domain, name in [('youtube.com', 'YouTube'), ('youtu.be', 'YouTube'), ('tiktok.com', 'TikTok'), ('instagram.com', 'Instagram'), ('pinterest.com', 'Pinterest'), ('pin.it', 'Pinterest')] if host == domain or host.endswith('.' + domain)), 'plataforma')
+    site = next((name for domain, name in [('youtube.com', 'YouTube'), ('youtu.be', 'YouTube'), ('tiktok.com', 'TikTok'), ('instagram.com', 'Instagram'), ('pinterest.com', 'Pinterest'), ('pin.it', 'Pinterest'), ('reddit.com', 'Reddit'), ('redd.it', 'Reddit')] if host == domain or host.endswith('.' + domain)), host or 'plataforma')
     if 'ffmpeg' in text or 'postprocessing' in text:
         return 'O processamento do arquivo falhou no FFmpeg. Tente outro formato. ' + error_reason(error)
     if any(word in text for word in ['timed out', 'timeout', 'connection reset', 'unable to download', 'network']):

@@ -12,9 +12,55 @@ def test_home():
     assert 'Kupotube' in response.text
 
 
-def test_reject_external_and_local_urls():
-    for url in ['https://example.com/video', 'http://youtube.com/watch?v=x', 'https://youtube.com.evil.test/x', 'https://127.0.0.1/']:
+@patch('app.socket.getaddrinfo', return_value=[(2, 1, 6, '', ('93.184.216.34', 443))])
+def test_accept_public_sites_without_platform_allowlist(resolve):
+    from app import validate_url
+    for url in ['https://www.reddit.com/r/videos/comments/abc/title/', 'https://v.redd.it/example',
+                'https://youtu.be/example', 'https://vimeo.com/123', 'https://www.twitch.tv/videos/123',
+                'https://example.com/video.mp4', 'http://example.com/video', 'https://example.com:8443/video']:
+        assert validate_url(url) == url
+
+
+def test_reject_unsafe_and_invalid_urls():
+    for url in ['file:///etc/passwd', 'ftp://example.com/video', 'https://user:pass@example.com/',
+                'https://127.0.0.1/', 'http://[::1]/', 'https://localhost/', 'https://server.local/',
+                'https://192.168.1.2/', 'http://169.254.169.254/', 'https:///video',
+                'https://example.com:99999/', 'https://example.com:0/', 'https://exa mple.com/']:
         assert client.post('/api/info', json={'url': url}).status_code == 400
+
+
+@patch('app.socket.getaddrinfo')
+def test_reject_private_dns_answers_and_unresolved_hosts(resolve):
+    import socket
+    from app import validate_url
+    from fastapi import HTTPException
+    import pytest
+    for addresses in [[], [(2,1,6,'',('10.0.0.1',443))],
+                      [(2,1,6,'',('93.184.216.34',443)), (10,1,6,'',('::1',443,0,0))]]:
+        resolve.return_value = addresses
+        with pytest.raises(HTTPException): validate_url('https://public-looking.example/video')
+    resolve.side_effect = socket.gaierror()
+    with patch.dict('os.environ', {'HTTPS_PROXY':'https://proxy.example'}):
+        with pytest.raises(HTTPException): validate_url('https://unresolved.example/video')
+
+
+@patch('app.socket.getaddrinfo', return_value=[(2,1,6,'',('93.184.216.34',443))])
+@patch('app.yt_dlp.YoutubeDL')
+def test_reddit_info_and_download_use_normal_pipeline(downloader, resolve):
+    url = 'https://www.reddit.com/r/videos/comments/abc/title/'
+    downloader.return_value.__enter__.return_value.extract_info.return_value = {
+        'title':'Reddit video', 'formats':[{'height':720,'vcodec':'h264'}]}
+    response = client.post('/api/info', json={'url':url})
+    assert response.status_code == 200
+    assert response.json()['qualities'] == [720]
+    downloader.return_value.__enter__.return_value.extract_info.assert_called_with(url, download=False)
+    def extract(link, download):
+        assert link == url and download is True
+        Path(downloader.call_args.args[0]['outtmpl'].replace('%(ext)s','mp4')).write_bytes(b'reddit video')
+        return {'title':'Reddit video'}
+    downloader.return_value.__enter__.return_value.extract_info.side_effect = extract
+    response = client.post('/api/download', json={'url':url, 'quality':720})
+    assert response.status_code == 200 and response.content == b'reddit video'
 
 
 @patch('app.validate_url', side_effect=lambda value: value)
